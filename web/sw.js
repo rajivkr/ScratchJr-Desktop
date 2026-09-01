@@ -37,6 +37,29 @@ self.addEventListener('activate', (event) => {
     })());
 });
 
+/**
+ * Pages and code change with every build; artwork and sounds do not.
+ *
+ * Serving code from the cache first means a device keeps running an old build
+ * until the next service worker takes over, which is a whole extra visit late.
+ * These go to the network first and fall back to the cache when offline, so an
+ * update lands as soon as the device sees it and the app still opens when it
+ * does not.
+ */
+function isPageOrCode (url) {
+    return url.pathname === '/' ||
+        url.pathname === '/app/' ||
+        /\.(html|js|json|webmanifest)$/.test(url.pathname);
+}
+
+async function cachePut (request, response) {
+    if (response && response.ok && response.type === 'basic') {
+        const cache = await caches.open(CACHE_NAME);
+        await cache.put(request, response.clone());
+    }
+    return response;
+}
+
 self.addEventListener('fetch', (event) => {
     const request = event.request;
 
@@ -56,17 +79,24 @@ self.addEventListener('fetch', (event) => {
     }
 
     event.respondWith((async () => {
+        if (isPageOrCode(url)) {
+            try {
+                return await cachePut(request, await fetch(request));
+            } catch (e) {
+                const cached = await caches.match(request, {ignoreSearch: true});
+                if (cached) {
+                    return cached;
+                }
+                // Fall through to the shared offline handling below.
+            }
+        }
+
         const cached = await caches.match(request, {ignoreSearch: true});
         if (cached) {
             return cached;
         }
         try {
-            const response = await fetch(request);
-            if (response && response.ok && response.type === 'basic') {
-                const cache = await caches.open(CACHE_NAME);
-                cache.put(request, response.clone());
-            }
-            return response;
+            return await cachePut(request, await fetch(request));
         } catch (e) {
             // Offline and not cached. Fall back within the same part of the
             // site: a navigation inside the app must never land on the landing

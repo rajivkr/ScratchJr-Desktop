@@ -1,16 +1,26 @@
 /*
  * Install handling for the landing page.
  *
- * Deliberately draws no interface of its own. Chrome, Edge and Android fire
- * `beforeinstallprompt`, and the page's own Install button hands off to the
- * browser's native install dialog. Safari has no such event, so the manual
- * step is written into the note under the button, styled by the page.
+ * The one rule here: the button always does something. The people using this
+ * are parents, not developers -- "look for an icon in your address bar" is not
+ * an instruction anybody should have to follow.
  *
- * If installing is not possible at all, the page still offers a plain link to
- * open ScratchJr in the browser.
+ * So there are exactly two states:
+ *
+ *   Install ScratchJr  - the browser offered us an install dialog; show it.
+ *   Open ScratchJr     - it is already installed, or this browser cannot
+ *                        install. Either way, open the app. It works in a
+ *                        browser tab just as well.
+ *
+ * iPad Safari is the one case where installing genuinely needs a manual step,
+ * so it gets one plain sentence -- and the button still opens the app.
  */
 
 const APP_URL = '/app/index.html';
+
+// How long to wait for the browser to offer an install before deciding it
+// isn't going to. Chrome fires this within a few hundred milliseconds.
+const INSTALL_OFFER_TIMEOUT = 1500;
 
 let deferredPrompt = null;
 
@@ -25,56 +35,73 @@ function isIOS () {
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
-function isSafari () {
-    const ua = window.navigator.userAgent;
-    return /Safari/.test(ua) && !/Chrome|Chromium|Edg|OPR|Brave/.test(ua);
-}
-
-function manualSteps () {
-    if (isIOS()) {
-        return 'On iPad: tap <b>Share</b>, then <b>Add to Home Screen</b>.';
-    }
-    if (isSafari()) {
-        return 'In Safari: choose <b>File</b>, then <b>Add to Dock</b>.';
-    }
-    return 'Use your browser’s install option, usually an icon at the right-hand end of the address bar.';
-}
-
 function button () {
     return document.getElementById('sjr-install-button');
 }
 
-function setNote (html) {
+function setNote (text) {
     const note = document.getElementById('sjr-install-note');
     if (note) {
-        note.innerHTML = html || '';
+        note.textContent = text || '';
     }
 }
 
-async function triggerInstall () {
+function showInstall () {
+    const el = button();
+    if (el) {
+        el.textContent = 'Install ScratchJr';
+        el.dataset.state = 'install';
+    }
+    setNote('');
+}
+
+function showOpen () {
+    const el = button();
+    if (el) {
+        el.textContent = 'Open ScratchJr';
+        el.dataset.state = 'open';
+    }
+    setNote(isIOS() ? 'To keep it on your Home Screen: tap Share, then Add to Home Screen.' : '');
+}
+
+function openApp () {
+    window.location.href = APP_URL;
+}
+
+async function onClick () {
     if (!deferredPrompt) {
-        setNote(manualSteps());
+        openApp();
         return;
     }
+
     const prompt = deferredPrompt;
     deferredPrompt = null;
     prompt.prompt();
 
     const choice = await prompt.userChoice;
     if (choice.outcome === 'accepted') {
-        markInstalled();
+        showOpen();
     } else {
-        setNote(manualSteps());
+        // They said no. Opening it is still useful, so offer that instead of
+        // pushing the install again.
+        showOpen();
     }
 }
 
-function markInstalled () {
-    const el = button();
-    if (el) {
-        el.textContent = 'Open ScratchJr';
-        el.dataset.state = 'installed';
+/**
+ * Ask the browser whether this app is already installed. Supported on Chrome
+ * and Edge; elsewhere the timeout below covers the same ground.
+ */
+async function alreadyInstalled () {
+    if (!navigator.getInstalledRelatedApps) {
+        return false;
     }
-    setNote('');
+    try {
+        const apps = await navigator.getInstalledRelatedApps();
+        return Array.isArray(apps) && apps.length > 0;
+    } catch (e) {
+        return false;
+    }
 }
 
 function registerServiceWorker () {
@@ -92,27 +119,24 @@ window.addEventListener('beforeinstallprompt', (event) => {
     // Keep Chrome's mini-infobar out of the way; the page's button drives it.
     event.preventDefault();
     deferredPrompt = event;
+    showInstall();
 });
 
-window.addEventListener('appinstalled', markInstalled);
+window.addEventListener('appinstalled', () => {
+    deferredPrompt = null;
+    showOpen();
+});
 
 const el = button();
 if (el) {
-    el.addEventListener('click', () => {
-        if (el.dataset.state === 'installed' || isStandalone()) {
-            window.location.href = APP_URL;
-            return;
-        }
-        triggerInstall();
-    });
+    el.addEventListener('click', onClick);
 }
 
 registerServiceWorker();
 
 if (isStandalone()) {
     // Opened from an installed icon: go straight into the app. Guarded so a
-    // failed navigation that lands back here cannot bounce forever -- the app
-    // is then reachable from the button rather than automatically.
+    // failed navigation that lands back here cannot bounce forever.
     let redirected = false;
     try {
         redirected = window.sessionStorage.getItem('sjr-redirected') === '1';
@@ -123,6 +147,18 @@ if (isStandalone()) {
     if (!redirected) {
         window.location.replace(APP_URL);
     }
-} else if (isSafari()) {
-    setNote(manualSteps());
+} else {
+    alreadyInstalled().then((installed) => {
+        if (installed) {
+            showOpen();
+            return;
+        }
+        // No install offer by now means it is installed, or this browser
+        // cannot install. Offer to open it rather than leaving a dead button.
+        setTimeout(() => {
+            if (!deferredPrompt) {
+                showOpen();
+            }
+        }, INSTALL_OFFER_TIMEOUT);
+    });
 }
