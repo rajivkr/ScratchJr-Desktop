@@ -1,24 +1,30 @@
 /*
  * Install handling for the landing page.
  *
- * Two rules, both learned the hard way:
+ * The button is a plain link to the app. That is deliberate: opening ScratchJr
+ * is what it does by default, with no JavaScript involved, so it cannot end up
+ * doing nothing if a script fails, is stale, or never loads.
  *
- *   1. Nobody should have to find anything in a browser menu. A parent who
- *      lands here gets a panel they cannot miss, with one button on it.
- *   2. The button always does something. If the browser will show an install
- *      dialog, it shows it. If the app is already installed, or the browser
- *      cannot install at all, it opens the app -- which works in a tab just
- *      as well as in its own window.
+ * JavaScript only ever upgrades that link: when the browser has offered an
+ * install dialog, the click is intercepted and the dialog shown instead.
  *
- * iPad Safari is the one place installing genuinely needs the person to do it
- * themselves, so it gets the two steps spelled out.
+ * The label stays "Install ScratchJr" and is only ever changed on proof that
+ * the app is installed -- the appinstalled event, or the page running in its
+ * own window. It is deliberately not changed because an install offer has not
+ * arrived: Chrome withholds beforeinstallprompt until the visitor has engaged
+ * with the site, so on a first visit "no offer yet" means nothing at all. An
+ * earlier version treated a 1.5 second silence as proof and told first-time
+ * visitors to Open an app they had never installed.
+ *
+ * A panel slides up on arrival with the same offer, so nobody has to scroll
+ * to find it. iPad Safari cannot be installed from script, so there the panel
+ * spells out the two steps instead.
  */
 
 const APP_URL = '/app/index.html';
 const DISMISSED_KEY = 'scratchjr-install-dismissed';
 
-// How long to wait for the browser to offer an install before deciding it is
-// not going to. Chrome fires this within a few hundred milliseconds.
+// How long to wait before showing iPad Safari its manual steps.
 const INSTALL_OFFER_TIMEOUT = 1500;
 
 let deferredPrompt = null;
@@ -50,10 +56,47 @@ function rememberDismissal () {
     }
 }
 
+function button () {
+    return document.getElementById('sjr-install-button');
+}
+
+function openApp () {
+    window.location.assign(new URL(APP_URL, window.location.origin).href);
+}
+
+function showOpenLabel () {
+    const el = button();
+    if (el) {
+        el.textContent = 'Open ScratchJr';
+    }
+}
+
+/**
+ * Show the browser's install dialog. Returns false when there is none to show,
+ * so the caller can fall back to simply opening the app.
+ */
+async function install () {
+    if (!deferredPrompt) {
+        return false;
+    }
+
+    const prompt = deferredPrompt;
+    deferredPrompt = null;
+    prompt.prompt();
+
+    const choice = await prompt.userChoice;
+    if (choice.outcome === 'accepted') {
+        showOpenLabel();
+    }
+    // Declined: leave the label alone. They can still install it later, and
+    // the link opens the app in the meantime.
+    return true;
+}
+
 // ---- The panel -----------------------------------------------------------
 //
 // Styled to belong to this page: its heading font, its button colour, its
-// rounded Bootstrap card edges. It is not a copy of the browser's own dialog.
+// rounded card edges. It is not a copy of the browser's own dialog.
 
 const PANEL_STYLES = `
 #sjr-panel {
@@ -160,13 +203,13 @@ function buildPanel (mode) {
         '</div></div>';
 
     if (mode === 'ios') {
+        // Safari cannot be driven from script, so the steps are the action.
         panel.innerHTML = top +
             '<ol>' +
             '<li>Tap the <b>Share</b> button at the top of Safari.</li>' +
             '<li>Choose <b>Add to Home Screen</b>.</li>' +
             '</ol>' +
             '<div class="sjr-actions">' +
-            '<button type="button" class="sjr-go" data-action="open">Open ScratchJr</button>' +
             '<button type="button" class="sjr-later" data-action="later">Not now</button>' +
             '</div>';
     } else {
@@ -184,9 +227,12 @@ function showPanel (mode) {
         return;
     }
 
-    const style = document.createElement('style');
-    style.textContent = PANEL_STYLES;
-    document.head.appendChild(style);
+    if (!document.getElementById('sjr-panel-styles')) {
+        const style = document.createElement('style');
+        style.id = 'sjr-panel-styles';
+        style.textContent = PANEL_STYLES;
+        document.head.appendChild(style);
+    }
 
     const panel = buildPanel(mode);
     document.body.appendChild(panel);
@@ -200,9 +246,11 @@ function showPanel (mode) {
         if (action === 'install') {
             panelMode = null;
             hidePanel();
-            runInstall();
-        } else if (action === 'open') {
-            openApp();
+            install().then((shown) => {
+                if (!shown) {
+                    openApp();
+                }
+            });
         } else {
             panelMode = null;
             rememberDismissal();
@@ -240,77 +288,6 @@ function followInstallButton () {
     }, {threshold: 0.4}).observe(el);
 }
 
-// ---- The button on the page ---------------------------------------------
-
-function button () {
-    return document.getElementById('sjr-install-button');
-}
-
-function setNote (text) {
-    const note = document.getElementById('sjr-install-note');
-    if (note) {
-        note.textContent = text || '';
-    }
-}
-
-function showInstallState () {
-    const el = button();
-    if (el) {
-        el.textContent = 'Install ScratchJr';
-        el.dataset.state = 'install';
-    }
-    setNote('');
-}
-
-function showOpenState () {
-    const el = button();
-    if (el) {
-        el.textContent = 'Open ScratchJr';
-        el.dataset.state = 'open';
-    }
-    setNote('');
-}
-
-function openApp () {
-    window.location.href = APP_URL;
-}
-
-async function runInstall () {
-    if (!deferredPrompt) {
-        if (isIOS()) {
-            showPanel('ios');
-        } else {
-            openApp();
-        }
-        return;
-    }
-
-    const prompt = deferredPrompt;
-    deferredPrompt = null;
-    prompt.prompt();
-
-    await prompt.userChoice;
-    // Either they installed it, or they declined. Opening it is the useful
-    // next step in both cases; do not push the install again.
-    showOpenState();
-}
-
-/**
- * Ask the browser whether this app is already installed. Supported on Chrome
- * and Edge; elsewhere the timeout below covers the same ground.
- */
-async function alreadyInstalled () {
-    if (!navigator.getInstalledRelatedApps) {
-        return false;
-    }
-    try {
-        const apps = await navigator.getInstalledRelatedApps();
-        return Array.isArray(apps) && apps.length > 0;
-    } catch (e) {
-        return false;
-    }
-}
-
 function registerServiceWorker () {
     if (!('serviceWorker' in navigator)) {
         return;
@@ -326,7 +303,6 @@ window.addEventListener('beforeinstallprompt', (event) => {
     // Suppress Chrome's own mini-infobar; this page asks properly instead.
     event.preventDefault();
     deferredPrompt = event;
-    showInstallState();
     panelMode = 'install';
     setTimeout(() => showPanel('install'), 900);
 });
@@ -335,17 +311,18 @@ window.addEventListener('appinstalled', () => {
     deferredPrompt = null;
     panelMode = null;
     hidePanel();
-    showOpenState();
+    showOpenLabel();
 });
 
 const el = button();
 if (el) {
-    el.addEventListener('click', () => {
-        if (el.dataset.state === 'open') {
-            openApp();
+    el.addEventListener('click', (event) => {
+        if (!deferredPrompt) {
+            // Let the link do exactly what it says: open the app.
             return;
         }
-        runInstall();
+        event.preventDefault();
+        install();
     });
 }
 
@@ -365,24 +342,13 @@ if (isStandalone()) {
     if (!redirected) {
         window.location.replace(APP_URL);
     }
-} else {
-    alreadyInstalled().then((installed) => {
-        if (installed) {
-            showOpenState();
-            return;
+} else if (isIOS()) {
+    // Safari never fires beforeinstallprompt, so waiting for it tells us
+    // nothing. Show the two manual steps.
+    setTimeout(() => {
+        if (!deferredPrompt) {
+            panelMode = 'ios';
+            showPanel('ios');
         }
-        setTimeout(() => {
-            if (deferredPrompt) {
-                return;
-            }
-            if (isIOS()) {
-                // Safari never offers an install; show the two steps.
-                panelMode = 'ios';
-                showPanel('ios');
-            } else {
-                // Installed already, or a browser that cannot install.
-                showOpenState();
-            }
-        }, INSTALL_OFFER_TIMEOUT);
-    });
+    }, INSTALL_OFFER_TIMEOUT);
 }
