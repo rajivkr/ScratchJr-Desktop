@@ -68,10 +68,14 @@ self.addEventListener('fetch', (event) => {
             }
             return response;
         } catch (e) {
-            // Offline and not cached: fall back to the splash screen for
-            // navigations so the app still opens.
+            // Offline and not cached. Fall back within the same part of the
+            // site: a navigation inside the app must never land on the landing
+            // page, or the installed app shows an install prompt -- and the
+            // landing page's own redirect back into the app then loops.
             if (request.mode === 'navigate') {
-                const fallback = await caches.match('index.html');
+                const fallback = url.pathname.startsWith('/app/')
+                    ? await caches.match('/app/index.html')
+                    : await caches.match('/index.html');
                 if (fallback) {
                     return fallback;
                 }
