@@ -1,24 +1,13 @@
 /*
  * Install handling for the landing page.
  *
- * The button is a plain link to the app. That is deliberate: opening ScratchJr
- * is what it does by default, with no JavaScript involved, so it cannot end up
- * doing nothing if a script fails, is stale, or never loads.
+ * The button installs. That is all it does. It never navigates this tab into
+ * the app -- opening ScratchJr in a browser tab is not what this page is for,
+ * and a parent who pressed Install should get an install, not a web page.
  *
- * JavaScript only ever upgrades that link: when the browser has offered an
- * install dialog, the click is intercepted and the dialog shown instead.
- *
- * The label stays "Install ScratchJr" and is only ever changed on proof that
- * the app is installed -- the appinstalled event, or the page running in its
- * own window. It is deliberately not changed because an install offer has not
- * arrived: Chrome withholds beforeinstallprompt until the visitor has engaged
- * with the site, so on a first visit "no offer yet" means nothing at all. An
- * earlier version treated a 1.5 second silence as proof and told first-time
- * visitors to Open an app they had never installed.
- *
- * A panel slides up on arrival with the same offer, so nobody has to scroll
- * to find it. iPad Safari cannot be installed from script, so there the panel
- * spells out the two steps instead.
+ * When the browser will not show an install dialog -- because the app is
+ * already installed, or because this browser cannot install -- the button says
+ * so in words underneath, and still does not navigate anywhere.
  */
 
 const APP_URL = '/app/index.html';
@@ -63,15 +52,9 @@ function button () {
     return document.getElementById('sjr-install-button');
 }
 
-function openApp () {
-    window.location.replace(new URL(APP_URL, window.location.origin).href);
-}
-
-function showOpenLabel () {
-    const el = button();
-    if (el) {
-        el.textContent = 'Open ScratchJr';
-    }
+function showAlreadyInstalled () {
+    setNote('ScratchJr is already installed on this device. Open it from your ' +
+        'Applications folder, the Dock, or the Start menu.');
 }
 
 /**
@@ -90,10 +73,9 @@ async function install () {
     const choice = await prompt.userChoice;
     if (choice.outcome === 'accepted') {
         rememberInstalled();
-        showOpenLabel();
+        showAlreadyInstalled();
     }
-    // Declined: leave the label alone. They can still install it later, and
-    // the link opens the app in the meantime.
+    // Declined: say nothing. They can press Install again whenever they like.
     return true;
 }
 
@@ -249,11 +231,7 @@ function showPanel (mode) {
         }
         if (action === 'install') {
             hidePanel();
-            install().then((shown) => {
-                if (!shown) {
-                    openApp();
-                }
-            });
+            install();
         } else {
             rememberDismissal();
             hidePanel();
@@ -341,13 +319,20 @@ window.addEventListener('appinstalled', () => {
 
 const el = button();
 if (el) {
-    el.addEventListener('click', (event) => {
-        if (!deferredPrompt) {
-            // Let the link do exactly what it says: open the app.
+    el.addEventListener('click', async () => {
+        const shown = await install();
+        if (shown) {
             return;
         }
-        event.preventDefault();
-        install();
+        // No dialog available. Say why, and stay on this page.
+        if (isIOS()) {
+            showPanel('ios');
+        } else if (wasInstalledFromHere()) {
+            showAlreadyInstalled();
+        } else {
+            setNote('Your browser did not offer to install ScratchJr. It is ' +
+                'either installed already, or this browser cannot install apps.');
+        }
     });
 }
 
@@ -357,12 +342,12 @@ registerServiceWorker();
 // record answers instantly; the browser's answer catches devices where it was
 // installed before this code existed, once the manifest is re-read.
 if (wasInstalledFromHere()) {
-    showOpenLabel();
+    showAlreadyInstalled();
 } else {
     alreadyInstalled().then((installed) => {
         if (installed) {
             rememberInstalled();
-            showOpenLabel();
+            showAlreadyInstalled();
         }
     });
 }
@@ -373,7 +358,7 @@ if (isStandalone()) {
     // window, stranding the installed app on the landing page. It existed to
     // break a loop whose actual cause -- the service worker falling back to
     // this page -- is fixed.
-    openApp();
+    window.location.replace(new URL(APP_URL, window.location.origin).href);
 } else if (isIOS()) {
     // Safari never fires beforeinstallprompt, so waiting for it tells us
     // nothing. Show the two manual steps.
