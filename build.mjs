@@ -112,13 +112,18 @@ function copyAppAssets () {
 
     // sql.js needs its WebAssembly module beside the app pages. esbuild resolves
     // the package's "browser" export, so it is the -browser build that is loaded
-    // and its .wasm file that must be present under that exact name.
-    for (const wasm of ['sql-wasm-browser.wasm', 'sql-wasm.wasm']) {
-        fs.copyFileSync(
-            path.join(root, 'node_modules', 'sql.js', 'dist', wasm),
-            path.join(appDist, wasm)
-        );
+    // and its .wasm file that must be present under that exact name. Verified
+    // against the bundle rather than assumed, since shipping the wrong one is a
+    // silent failure at start-up and shipping both wastes 650KB of the shell.
+    const wasm = 'sql-wasm-browser.wasm';
+    const bundle = fs.readFileSync(path.join(appDist, 'scratchjr.js'), 'utf8');
+    if (!bundle.includes(wasm)) {
+        throw new Error(`The bundle does not reference ${wasm}; check sql.js resolution`);
     }
+    fs.copyFileSync(
+        path.join(root, 'node_modules', 'sql.js', 'dist', wasm),
+        path.join(appDist, wasm)
+    );
 }
 
 function copyLandingAssets () {
@@ -299,13 +304,35 @@ function writeWebManifest () {
 
 // ---- 7. Service worker ---------------------------------------------------
 
+/**
+ * Split the precache into the shell -- what is needed to open the app -- and
+ * everything else. The worker caches the shell during install and activates
+ * immediately; the rest is fetched afterwards, in the background. A browser
+ * will not offer to install a site until a service worker is in control, so
+ * install must not wait on 34MB of artwork.
+ */
+function isShell (file) {
+    return file.endsWith('.html') ||
+        file.endsWith('.js') ||
+        file.endsWith('.wasm') ||
+        file.endsWith('.webmanifest') ||
+        file.endsWith('.css') ||
+        file.startsWith('icons/') ||
+        file.startsWith('app/localizations/') ||
+        file === 'app/media.json' ||
+        file === 'app/settings.json' ||
+        file === 'app/sound-manifest.json';
+}
+
 function writeServiceWorker () {
     const files = walk(dist)
-        .filter((file) => file !== 'sw.js')
-        .map((file) => '/' + file);
+        .filter((file) => file !== 'sw.js');
+
+    const shell = files.filter(isShell).map((file) => '/' + file);
+    const rest = files.filter((file) => !isShell(file)).map((file) => '/' + file);
 
     // The app pages are also reachable as directory URLs.
-    files.push('/app/');
+    shell.push('/app/');
 
     const fingerprint = createHash('sha256')
         .update(files.join('\n'))
@@ -316,10 +343,20 @@ function writeServiceWorker () {
     const template = fs.readFileSync(path.join(root, 'web', 'sw.js'), 'utf8');
     const sw = template
         .replace('__CACHE_NAME__', 'scratchjr-' + fingerprint)
-        .replace('__PRECACHE__', JSON.stringify(files));
+        .replace('__SHELL__', JSON.stringify(shell))
+        .replace('__REST__', JSON.stringify(rest));
+
+    if (sw.includes('__SHELL__') || sw.includes('__REST__') || sw.includes('__CACHE_NAME__')) {
+        throw new Error('Service worker placeholders were not all replaced');
+    }
 
     fs.writeFileSync(path.join(dist, 'sw.js'), sw);
-    return files.length;
+
+    const shellBytes = shell
+        .filter((url) => url !== '/app/')
+        .reduce((sum, url) => sum + fs.statSync(path.join(dist, url.slice(1))).size, 0);
+
+    return {total: shell.length + rest.length, shell: shell.length, shellBytes};
 }
 
 // ---- Run -----------------------------------------------------------------
@@ -341,10 +378,12 @@ async function build () {
     const sounds = writeSoundManifest();
     const icons = writeIcons();
     writeWebManifest();
-    const precached = writeServiceWorker();
+    const sw = writeServiceWorker();
 
     const bytes = walk(dist).reduce((sum, file) => sum + fs.statSync(path.join(dist, file)).size, 0);
-    log(`${precached} files, ${sounds} sounds, ${styles} stylesheets, ${icons} icons, ${(bytes / 1048576).toFixed(1)} MB in ${Date.now() - started}ms`);
+    log(`${sw.total} files (${sw.shell} in the shell, ${(sw.shellBytes / 1024).toFixed(0)} KB), ` +
+        `${sounds} sounds, ${styles} stylesheets, ${icons} icons, ` +
+        `${(bytes / 1048576).toFixed(1)} MB in ${Date.now() - started}ms`);
 }
 
 const MIME = {

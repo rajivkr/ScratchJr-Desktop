@@ -9,20 +9,39 @@
  */
 
 const CACHE_NAME = '__CACHE_NAME__';
-const PRECACHE = __PRECACHE__;
 
+// The pages and code needed to open the app: a few hundred kilobytes.
+const SHELL = __SHELL__;
+
+// Everything else -- artwork, sounds, sample projects, the intro video.
+const REST = __REST__;
+
+/** Cache a list of URLs in batches, tolerating individual failures. */
+async function cacheAll (cache, urls, reload) {
+    const BATCH = 40;
+    for (let i = 0; i < urls.length; i += BATCH) {
+        const batch = urls.slice(i, i + BATCH);
+        await Promise.all(batch.map((url) =>
+            cache.add(reload ? new Request(url, {cache: 'reload'}) : url).catch(() => {})
+        ));
+    }
+}
+
+/*
+ * Install caches the shell only, then activates.
+ *
+ * This used to precache all 34MB before calling skipWaiting, which meant no
+ * service worker controlled the page until every sprite and sound had been
+ * downloaded. A browser will not treat a site as installable until a worker
+ * with a fetch handler is in control -- so on a real connection the install
+ * offer never arrived, and the first load sat there while the whole asset
+ * library came down. On a fast local disk it finished in a second, which is
+ * why it looked fine in development.
+ */
 self.addEventListener('install', (event) => {
     event.waitUntil((async () => {
         const cache = await caches.open(CACHE_NAME);
-        // addAll() is all-or-nothing across ~1,000 files; cache them in batches
-        // and tolerate individual misses so one bad asset cannot brick install.
-        const BATCH = 40;
-        for (let i = 0; i < PRECACHE.length; i += BATCH) {
-            const batch = PRECACHE.slice(i, i + BATCH);
-            await Promise.all(batch.map((url) =>
-                cache.add(new Request(url, {cache: 'reload'})).catch(() => {})
-            ));
-        }
+        await cacheAll(cache, SHELL, true);
         await self.skipWaiting();
     })());
 });
@@ -34,6 +53,11 @@ self.addEventListener('activate', (event) => {
             names.filter((name) => name !== CACHE_NAME).map((name) => caches.delete(name))
         );
         await self.clients.claim();
+
+        // The rest fills in behind the app, which is usable immediately and
+        // caches anything it touches through the fetch handler anyway.
+        const cache = await caches.open(CACHE_NAME);
+        cacheAll(cache, REST, false).catch(() => {});
     })());
 });
 
