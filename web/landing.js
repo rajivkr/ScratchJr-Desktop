@@ -268,6 +268,26 @@ function hidePanel () {
     setTimeout(() => panel.remove(), 260);
 }
 
+/**
+ * Ask the browser whether this app is already installed.
+ *
+ * This is positive proof, not a guess: it only ever reports true when the
+ * browser knows the app is installed. Nothing here concludes anything from an
+ * install offer failing to arrive -- that is normal on a first visit, and an
+ * earlier version got this badly wrong by treating silence as evidence.
+ */
+async function alreadyInstalled () {
+    if (!navigator.getInstalledRelatedApps) {
+        return false;
+    }
+    try {
+        const apps = await navigator.getInstalledRelatedApps();
+        return Array.isArray(apps) && apps.length > 0;
+    } catch (e) {
+        return false;
+    }
+}
+
 function registerServiceWorker () {
     if (!('serviceWorker' in navigator)) {
         return;
@@ -305,6 +325,13 @@ if (el) {
 }
 
 registerServiceWorker();
+
+// If it is already installed, say so and let the button open it.
+alreadyInstalled().then((installed) => {
+    if (installed) {
+        showOpenLabel();
+    }
+});
 
 if (isStandalone()) {
     // Belt and braces: the head of this page already redirects. The guard that

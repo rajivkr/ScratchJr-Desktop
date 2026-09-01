@@ -21,6 +21,10 @@ const dist = path.join(root, 'dist');
 const appDist = path.join(dist, 'app');
 const appSrc = path.join(root, 'src', 'app');
 
+// Absolute origin the site is served from. Needed for related_applications,
+// which the spec requires to be an absolute URL.
+const SITE_URL = (process.env.SITE_URL || 'https://scratchjr.rajiv.kr').replace(/\/$/, '');
+
 const watch = process.argv.includes('--watch');
 const serve = process.argv.includes('--serve');
 
@@ -285,6 +289,14 @@ function writeWebManifest () {
         start_url: '/app/index.html',
         display: 'standalone',
         orientation: 'landscape',
+        // Lets a page ask navigator.getInstalledRelatedApps() whether this app
+        // is already installed, so the landing page can offer to open it rather
+        // than to install it again. Without this entry the call always returns
+        // an empty list, whatever the real state.
+        related_applications: [
+            {platform: 'webapp', url: `${SITE_URL}/manifest.webmanifest`}
+        ],
+        prefer_related_applications: false,
         background_color: '#000000',
         theme_color: '#000000',
         icons: ICON_SIZES.map((size) => ({
