@@ -1,19 +1,22 @@
 /*
  * The install offer.
  *
- * This is the only interface this port adds, and it appears in exactly one
- * place: over the ScratchJr splash screen, in a browser, before the app has
- * been installed. The installed app never shows it, and neither does any page
- * a child navigates to afterwards.
+ * The only interface this port adds, and it appears in exactly one place: over
+ * the ScratchJr splash screen, in a browser, before the app has been installed.
+ * The installed app never shows it.
  *
- * It offers one action and it never navigates anywhere. Pressing Install shows
- * the browser's own install dialog. When there is no dialog to show -- the app
- * is already installed, or this browser cannot install apps -- it says so in
- * words and stays put.
+ * Laid out after the install banner in Norven: a bar across the bottom in the
+ * brand colour, the app's own icon on a white tile, and two full-width buttons
+ * stacked so there is nothing to aim at. iPad Safari cannot be driven from
+ * script, so it gets the three steps written out instead.
  */
 
 const DISMISSED_KEY = 'scratchjr-install-dismissed';
 const INSTALLED_KEY = 'scratchjr-installed';
+
+// ScratchJr's splash blue is #35A8E0; this is that colour darkened enough to
+// carry white text, so the bar reads as part of the app rather than bolted on.
+const BRAND = '#166E96';
 
 let deferredPrompt = null;
 
@@ -46,55 +49,95 @@ function writeFlag (store, key) {
 }
 
 const STYLES = `
-#sjr-panel {
+@keyframes sjrSlideUp {
+    from { opacity: 0; transform: translateY(100%); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+#sjr-install {
     position: fixed;
-    left: 50%;
-    bottom: 28px;
-    transform: translateX(-50%) translateY(20px);
-    z-index: 100000;
-    width: min(460px, calc(100vw - 32px));
-    box-sizing: border-box;
-    padding: 22px 24px 20px;
-    background: #ffffff;
-    border-radius: 14px;
-    box-shadow: 0 2px 8px rgba(0,0,0,.10), 0 16px 40px rgba(0,0,0,.28);
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 99999;
+    background: ${BRAND};
+    box-shadow: 0 -4px 32px rgba(0, 0, 0, .32);
+    animation: sjrSlideUp .3s ease;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    opacity: 0;
-    transition: opacity .25s ease, transform .25s ease;
-    pointer-events: none;
 }
-#sjr-panel.sjr-in {
-    opacity: 1;
-    transform: translateX(-50%) translateY(0);
-    pointer-events: auto;
+#sjr-install.sjr-out {
+    animation: sjrSlideUp .25s ease reverse forwards;
 }
-#sjr-panel .sjr-top { display: flex; align-items: center; gap: 15px; }
-#sjr-panel .sjr-top img { width: 54px; height: 54px; border-radius: 12px; flex: none; }
-#sjr-panel h3 { margin: 0 0 3px; font-size: 19px; font-weight: 600; color: #1d1d1f; }
-#sjr-panel p { margin: 0; font-size: 14px; line-height: 1.45; color: #6b6b70; }
-#sjr-panel ol { margin: 14px 0 0; padding-left: 20px; font-size: 14px; line-height: 1.6; color: #3c3c43; }
-#sjr-panel ol b { color: #1d1d1f; }
-#sjr-panel .sjr-actions { display: flex; align-items: center; gap: 12px; margin-top: 18px; }
-#sjr-panel button {
-    font: inherit;
+#sjr-install .sjr-inner {
+    max-width: 520px;
+    margin: 0 auto;
+    padding: 20px 20px 26px;
+}
+#sjr-install .sjr-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+#sjr-install .sjr-tile {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    background: #fff;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+#sjr-install .sjr-tile img { width: 40px; height: 40px; }
+#sjr-install .sjr-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1.3;
+}
+#sjr-install .sjr-sub {
+    font-size: 12px;
+    color: rgba(255, 255, 255, .75);
+    line-height: 1.4;
+}
+#sjr-install .sjr-steps {
+    background: rgba(255, 255, 255, .12);
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    font-size: 13px;
+    color: #fff;
+    line-height: 1.7;
+}
+#sjr-install .sjr-steps b { color: #fff; }
+#sjr-install button {
+    width: 100%;
+    display: block;
+    border: none;
+    border-radius: 12px;
+    padding: 14px;
+    font-family: inherit;
     font-size: 15px;
-    font-weight: 500;
-    padding: 11px 18px;
-    border-radius: 9px;
     cursor: pointer;
-    border: 0;
 }
-#sjr-panel .sjr-go { flex: 1; background: #007aff; color: #fff; }
-#sjr-panel .sjr-go:hover { background: #0069db; }
-#sjr-panel .sjr-later { background: none; color: #6b6b70; text-decoration: underline; }
-#sjr-panel .sjr-later:hover { color: #1d1d1f; }
-@media (max-width: 520px) {
-    #sjr-panel { bottom: 12px; padding: 18px; }
+#sjr-install .sjr-go {
+    background: #fff;
+    color: ${BRAND};
+    font-weight: 700;
+    margin-bottom: 10px;
 }
+#sjr-install .sjr-go:hover { background: #f2f2f2; }
+#sjr-install .sjr-later {
+    background: rgba(255, 255, 255, .15);
+    color: #fff;
+    font-weight: 600;
+}
+#sjr-install .sjr-later:hover { background: rgba(255, 255, 255, .24); }
 `;
 
 function render (mode) {
-    if (document.getElementById('sjr-panel')) {
+    if (document.getElementById('sjr-install')) {
         return;
     }
 
@@ -102,43 +145,41 @@ function render (mode) {
     style.textContent = STYLES;
     document.head.appendChild(style);
 
-    const panel = document.createElement('div');
-    panel.id = 'sjr-panel';
-    panel.setAttribute('role', 'dialog');
-    panel.setAttribute('aria-label', 'Install ScratchJr');
+    const bar = document.createElement('div');
+    bar.id = 'sjr-install';
+    bar.setAttribute('role', 'dialog');
+    bar.setAttribute('aria-label', 'Install ScratchJr');
 
-    const identity =
-        '<div class="sjr-top">' +
-        '<img src="icons/icon-256.png" alt="">' +
-        '<div><h3>Install ScratchJr</h3>' +
-        '<p>Puts ScratchJr on this device with its own icon. Works without internet.</p>' +
+    const head =
+        '<div class="sjr-head">' +
+        '<div class="sjr-tile"><img src="icons/icon-256.png" alt=""></div>' +
+        '<div>' +
+        '<div class="sjr-title">Install ScratchJr</div>' +
+        '<div class="sjr-sub">Get the app on this device. Works without internet.</div>' +
         '</div></div>';
 
-    if (mode === 'ios') {
-        // Safari cannot be driven from script, so the steps are the action.
-        panel.innerHTML = identity +
-            '<ol><li>Tap the <b>Share</b> button.</li>' +
-            '<li>Choose <b>Add to Home Screen</b>.</li></ol>' +
-            '<div class="sjr-actions">' +
-            '<button type="button" class="sjr-later" data-action="later">Not now</button>' +
-            '</div>';
-    } else {
-        panel.innerHTML = identity +
-            '<div class="sjr-actions">' +
-            '<button type="button" class="sjr-go" data-action="install">Install</button>' +
-            '<button type="button" class="sjr-later" data-action="later">Not now</button>' +
-            '</div>';
-    }
+    const action = (mode === 'ios')
+        ? '<div class="sjr-steps">' +
+          '1. Tap the <b>Share</b> button <span style="font-size:16px">&#x2934;</span><br>' +
+          '2. Scroll down and tap <b>Add to Home Screen</b><br>' +
+          '3. Tap <b>Add</b> in the top right' +
+          '</div>'
+        : '<button type="button" class="sjr-go" data-action="install">Install App</button>';
 
-    document.body.appendChild(panel);
-    requestAnimationFrame(() => panel.classList.add('sjr-in'));
+    const dismissLabel = (mode === 'ios') ? 'Got it' : 'Not now';
 
-    panel.addEventListener('click', (event) => {
-        const action = event.target.getAttribute && event.target.getAttribute('data-action');
-        if (!action) {
+    bar.innerHTML = '<div class="sjr-inner">' + head + action +
+        '<button type="button" class="sjr-later" data-action="later">' + dismissLabel + '</button>' +
+        '</div>';
+
+    document.body.appendChild(bar);
+
+    bar.addEventListener('click', (event) => {
+        const target = event.target.closest && event.target.closest('[data-action]');
+        if (!target) {
             return;
         }
-        if (action === 'install') {
+        if (target.getAttribute('data-action') === 'install') {
             runInstall();
         } else {
             writeFlag('sessionStorage', DISMISSED_KEY);
@@ -148,21 +189,21 @@ function render (mode) {
 }
 
 function dismiss () {
-    const panel = document.getElementById('sjr-panel');
-    if (!panel) {
+    const bar = document.getElementById('sjr-install');
+    if (!bar) {
         return;
     }
-    panel.classList.remove('sjr-in');
-    setTimeout(() => panel.remove(), 260);
+    bar.classList.add('sjr-out');
+    setTimeout(() => bar.remove(), 260);
 }
 
 function say (text) {
-    const panel = document.getElementById('sjr-panel');
-    if (!panel) {
+    const bar = document.getElementById('sjr-install');
+    if (!bar) {
         return;
     }
-    panel.querySelector('p').textContent = text;
-    const go = panel.querySelector('.sjr-go');
+    bar.querySelector('.sjr-sub').textContent = text;
+    const go = bar.querySelector('.sjr-go');
     if (go) {
         go.remove();
     }
@@ -170,7 +211,7 @@ function say (text) {
 
 async function runInstall () {
     if (!deferredPrompt) {
-        say('ScratchJr is already installed on this device, or this browser cannot install apps.');
+        say('Already installed on this device, or this browser cannot install apps.');
         return;
     }
 
@@ -181,10 +222,8 @@ async function runInstall () {
     const choice = await prompt.userChoice;
     if (choice.outcome === 'accepted') {
         writeFlag('localStorage', INSTALLED_KEY);
-        dismiss();
-    } else {
-        dismiss();
     }
+    dismiss();
 }
 
 /** Positive proof only: the browser saying yes, or our own record of it. */
@@ -203,9 +242,42 @@ async function alreadyInstalled () {
     }
 }
 
+/**
+ * Wait until the splash has finished asking where ScratchJr is being used, so
+ * the bar does not cover that question's own answers on a first run.
+ *
+ * This waits on state, not on time. ScratchJr records the answer in
+ * localStorage.appUsage, so the question is over exactly when that exists.
+ * Two earlier attempts polled the question's CSS class instead and both raced
+ * the app's start-up -- they looked at a moment when the question had not been
+ * rendered yet, concluded it was not being asked, and put the bar on top of it.
+ */
+function whenSplashIsClear (whenDone) {
+    const INTERVAL = 400;
+    const GIVE_UP = 20000;
+    let waited = 0;
+
+    const answered = () => {
+        try {
+            return window.localStorage.getItem('appUsage') !== null;
+        } catch (e) {
+            return true;
+        }
+    };
+
+    const check = () => {
+        if (answered() || waited > GIVE_UP) {
+            whenDone();
+            return;
+        }
+        waited += INTERVAL;
+        setTimeout(check, INTERVAL);
+    };
+
+    check();
+}
+
 export default function mountInstallPrompt () {
-    // Only over the splash screen, never inside the installed app, and never
-    // again in a visit where it has been dismissed.
     if (window.scratchJrPage !== 'index' ||
         isStandalone() ||
         readFlag('sessionStorage', DISMISSED_KEY)) {
@@ -217,11 +289,13 @@ export default function mountInstallPrompt () {
             return;
         }
 
+        const show = (mode) => whenSplashIsClear(() => setTimeout(() => render(mode), 800));
+
         window.addEventListener('beforeinstallprompt', (event) => {
             // Suppress the browser's own mini-infobar; this asks properly.
             event.preventDefault();
             deferredPrompt = event;
-            render('install');
+            show('install');
         });
 
         window.addEventListener('appinstalled', () => {
@@ -234,7 +308,7 @@ export default function mountInstallPrompt () {
             // Safari never fires beforeinstallprompt.
             setTimeout(() => {
                 if (!deferredPrompt) {
-                    render('ios');
+                    show('ios');
                 }
             }, 1500);
         }
