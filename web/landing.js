@@ -40,9 +40,11 @@ function isIOS () {
         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 }
 
+// Dismissal lasts this visit only. Someone who taps Not now by accident, or
+// changes their mind later, gets the offer again next time rather than never.
 function remembersDismissal () {
     try {
-        return window.localStorage.getItem(DISMISSED_KEY) === '1';
+        return window.sessionStorage.getItem(DISMISSED_KEY) === '1';
     } catch (e) {
         return false;
     }
@@ -50,7 +52,7 @@ function remembersDismissal () {
 
 function rememberDismissal () {
     try {
-        window.localStorage.setItem(DISMISSED_KEY, '1');
+        window.sessionStorage.setItem(DISMISSED_KEY, '1');
     } catch (e) {
         // Private browsing; the panel simply appears again next visit.
     }
@@ -61,7 +63,7 @@ function button () {
 }
 
 function openApp () {
-    window.location.assign(new URL(APP_URL, window.location.origin).href);
+    window.location.replace(new URL(APP_URL, window.location.origin).href);
 }
 
 function showOpenLabel () {
@@ -244,7 +246,6 @@ function showPanel (mode) {
             return;
         }
         if (action === 'install') {
-            panelMode = null;
             hidePanel();
             install().then((shown) => {
                 if (!shown) {
@@ -252,7 +253,6 @@ function showPanel (mode) {
                 }
             });
         } else {
-            panelMode = null;
             rememberDismissal();
             hidePanel();
         }
@@ -266,26 +266,6 @@ function hidePanel () {
     }
     panel.classList.remove('sjr-in');
     setTimeout(() => panel.remove(), 260);
-}
-
-// The panel exists so the offer cannot be missed. When the page's own Install
-// button is on screen the offer is already in front of them, so the panel gets
-// out of the way rather than sitting on top of an identical button.
-let panelMode = null;
-
-function followInstallButton () {
-    const el = button();
-    if (!el || !window.IntersectionObserver) {
-        return;
-    }
-    new IntersectionObserver((entries) => {
-        const visible = entries.some((entry) => entry.isIntersecting);
-        if (visible) {
-            hidePanel();
-        } else if (panelMode) {
-            showPanel(panelMode);
-        }
-    }, {threshold: 0.4}).observe(el);
 }
 
 function registerServiceWorker () {
@@ -303,13 +283,11 @@ window.addEventListener('beforeinstallprompt', (event) => {
     // Suppress Chrome's own mini-infobar; this page asks properly instead.
     event.preventDefault();
     deferredPrompt = event;
-    panelMode = 'install';
     setTimeout(() => showPanel('install'), 900);
 });
 
 window.addEventListener('appinstalled', () => {
     deferredPrompt = null;
-    panelMode = null;
     hidePanel();
     showOpenLabel();
 });
@@ -327,27 +305,19 @@ if (el) {
 }
 
 registerServiceWorker();
-followInstallButton();
 
 if (isStandalone()) {
-    // Opened from an installed icon: go straight into the app. Guarded so a
-    // failed navigation that lands back here cannot bounce forever.
-    let redirected = false;
-    try {
-        redirected = window.sessionStorage.getItem('sjr-redirected') === '1';
-        window.sessionStorage.setItem('sjr-redirected', '1');
-    } catch (e) {
-        // Storage unavailable; fall through and redirect once.
-    }
-    if (!redirected) {
-        window.location.replace(APP_URL);
-    }
+    // Belt and braces: the head of this page already redirects. The guard that
+    // used to sit here could skip the redirect on a second load in the same
+    // window, stranding the installed app on the landing page. It existed to
+    // break a loop whose actual cause -- the service worker falling back to
+    // this page -- is fixed.
+    openApp();
 } else if (isIOS()) {
     // Safari never fires beforeinstallprompt, so waiting for it tells us
     // nothing. Show the two manual steps.
     setTimeout(() => {
         if (!deferredPrompt) {
-            panelMode = 'ios';
             showPanel('ios');
         }
     }, INSTALL_OFFER_TIMEOUT);

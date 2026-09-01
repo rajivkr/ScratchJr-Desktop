@@ -15,6 +15,16 @@
  
     <!-- Custom styles for this template -->
     <link href="pricing.css" rel="stylesheet">
+    <script>
+      // Running in the installed app? Then this page must never appear. Done
+      // inline in the head, before anything renders, so the installed app goes
+      // straight to ScratchJr with no flash of the landing page.
+      if (window.matchMedia('(display-mode: standalone)').matches ||
+          window.matchMedia('(display-mode: window-controls-overlay)').matches ||
+          window.navigator.standalone === true) {
+        window.location.replace('/app/index.html');
+      }
+    </script>
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#3099C9">
     <link rel="icon" href="/icons/icon-192.png">
