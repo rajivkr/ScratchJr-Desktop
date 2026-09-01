@@ -6,7 +6,6 @@
   "installCommand": "npm install",
   "headers": [
     {
-      "comment": "The service worker decides what is cached; it must never be stale itself, or devices keep running an old build.",
       "source": "/sw.js",
       "headers": [
         {"key": "Cache-Control", "value": "public, max-age=0, must-revalidate"},
@@ -25,12 +24,10 @@
       ]
     },
     {
-      "comment": "The app bundle is re-read on every load; the service worker serves it offline.",
       "source": "/app/scratchjr.js",
       "headers": [{"key": "Cache-Control", "value": "public, max-age=0, must-revalidate"}]
     },
     {
-      "comment": "Artwork, sounds and sample projects are content-stable across builds.",
       "source": "/app/(assets|svglibrary|pnglibrary|sounds|samples)/(.*)",
       "headers": [{"key": "Cache-Control", "value": "public, max-age=31536000, immutable"}]
     }
