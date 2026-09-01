@@ -23,6 +23,7 @@
 
 const APP_URL = '/app/index.html';
 const DISMISSED_KEY = 'scratchjr-install-dismissed';
+const INSTALLED_KEY = 'scratchjr-installed';
 
 // How long to wait before showing iPad Safari its manual steps.
 const INSTALL_OFFER_TIMEOUT = 1500;
@@ -88,6 +89,7 @@ async function install () {
 
     const choice = await prompt.userChoice;
     if (choice.outcome === 'accepted') {
+        rememberInstalled();
         showOpenLabel();
     }
     // Declined: leave the label alone. They can still install it later, and
@@ -269,6 +271,30 @@ function hidePanel () {
 }
 
 /**
+ * Remember, on this device, that the app was installed from here.
+ *
+ * getInstalledRelatedApps is the browser's own answer, but it only reflects
+ * related_applications from a manifest the browser has re-read, and browsers
+ * cache manifests for a long time. Recording the appinstalled event ourselves
+ * gives an answer that is right immediately and stays right.
+ */
+function rememberInstalled () {
+    try {
+        window.localStorage.setItem(INSTALLED_KEY, '1');
+    } catch (e) {
+        // Storage unavailable; fall back to asking the browser.
+    }
+}
+
+function wasInstalledFromHere () {
+    try {
+        return window.localStorage.getItem(INSTALLED_KEY) === '1';
+    } catch (e) {
+        return false;
+    }
+}
+
+/**
  * Ask the browser whether this app is already installed.
  *
  * This is positive proof, not a guess: it only ever reports true when the
@@ -309,6 +335,7 @@ window.addEventListener('beforeinstallprompt', (event) => {
 window.addEventListener('appinstalled', () => {
     deferredPrompt = null;
     hidePanel();
+    rememberInstalled();
     showOpenLabel();
 });
 
@@ -326,12 +353,19 @@ if (el) {
 
 registerServiceWorker();
 
-// If it is already installed, say so and let the button open it.
-alreadyInstalled().then((installed) => {
-    if (installed) {
-        showOpenLabel();
-    }
-});
+// If it is already installed, say so and let the button open it. Our own
+// record answers instantly; the browser's answer catches devices where it was
+// installed before this code existed, once the manifest is re-read.
+if (wasInstalledFromHere()) {
+    showOpenLabel();
+} else {
+    alreadyInstalled().then((installed) => {
+        if (installed) {
+            rememberInstalled();
+            showOpenLabel();
+        }
+    });
+}
 
 if (isStandalone()) {
     // Belt and braces: the head of this page already redirects. The guard that
