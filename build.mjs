@@ -12,7 +12,6 @@
 import * as esbuild from 'esbuild';
 import {createServer} from 'node:http';
 import {createHash} from 'node:crypto';
-import {execFileSync} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -139,8 +138,8 @@ const HEAD_TAGS = `<link rel="manifest" href="/manifest.webmanifest">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="apple-mobile-web-app-title" content="ScratchJr">
-<link rel="icon" href="/icons/icon-192.png">
-<link rel="apple-touch-icon" href="/icons/icon-180.png">`;
+<link rel="icon" href="/icons/icon-256.png">
+<link rel="apple-touch-icon" href="/icons/icon-256.png">`;
 
 function rewritePages () {
     for (const page of PAGES) {
@@ -228,27 +227,40 @@ function writeStyleBundle () {
 
 // ---- 5. Icons ------------------------------------------------------------
 
-const ICON_SIZES = [96, 128, 180, 192, 256, 384, 512, 1024];
+// Only sizes that genuinely exist in src/icons/png. An earlier version
+// declared sizes it did not have and resized with macOS `sips`, silently
+// falling back to a copy of the 1024 icon when `sips` was missing. Vercel
+// builds on Linux, so every "resized" icon shipped at 1024 with a size that
+// lied about it -- and Chrome, which checks the real dimensions, rejected the
+// icons and refused to treat the site as installable. No install prompt ever
+// appeared in production while it worked perfectly on a Mac.
+const ICON_SIZES = [128, 256, 512, 1024];
+
+/** Read a PNG's real dimensions from its IHDR chunk. */
+function pngSize (file) {
+    const bytes = fs.readFileSync(file);
+    return {width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20)};
+}
 
 function writeIcons () {
     const iconsDist = path.join(dist, 'icons');
     fs.mkdirSync(iconsDist, {recursive: true});
 
-    const source = path.join(root, 'src', 'icons', 'png', '1024x1024.png');
-
     for (const size of ICON_SIZES) {
-        const target = path.join(iconsDist, `icon-${size}.png`);
-        const existing = path.join(root, 'src', 'icons', 'png', `${size}x${size}.png`);
-        if (fs.existsSync(existing)) {
-            fs.copyFileSync(existing, target);
-            continue;
+        const source = path.join(root, 'src', 'icons', 'png', `${size}x${size}.png`);
+        if (!fs.existsSync(source)) {
+            throw new Error(`Missing icon source ${size}x${size}.png`);
         }
-        // sips ships with macOS; on other platforms fall back to the 1024 icon.
-        try {
-            execFileSync('sips', ['-z', String(size), String(size), source, '--out', target],
-                {stdio: 'ignore'});
-        } catch (e) {
-            fs.copyFileSync(source, target);
+        const target = path.join(iconsDist, `icon-${size}.png`);
+        fs.copyFileSync(source, target);
+
+        // The manifest is about to claim this icon is exactly this size, and
+        // Chrome checks. Never let that claim go out unverified again.
+        const actual = pngSize(target);
+        if (actual.width !== size || actual.height !== size) {
+            throw new Error(
+                `icon-${size}.png is ${actual.width}x${actual.height}, not ${size}x${size}`
+            );
         }
     }
     return ICON_SIZES.length;

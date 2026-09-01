@@ -199,7 +199,7 @@ function buildPanel (mode) {
 
     const top =
         '<div class="sjr-top">' +
-        '<img src="/icons/icon-192.png" alt="">' +
+        '<img src="/icons/icon-256.png" alt="">' +
         '<div><h3>Install ScratchJr</h3>' +
         '<p>Puts ScratchJr on this device with its own icon. Works without internet.</p>' +
         '</div></div>';
