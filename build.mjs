@@ -1,0 +1,386 @@
+/*
+ * Build the ScratchJr PWA.
+ *
+ *   dist/                landing page, manifest, service worker, icons
+ *   dist/app/            ScratchJr itself, byte-for-byte the same assets
+ *
+ * The app's HTML is copied with only its two <script> tags rewritten: the
+ * Electron client and the raw ES-module entry point are replaced by one bundle.
+ * No other markup, stylesheet, or image is touched.
+ */
+
+import * as esbuild from 'esbuild';
+import {createServer} from 'node:http';
+import {createHash} from 'node:crypto';
+import {execFileSync} from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+
+const root = path.dirname(fileURLToPath(import.meta.url));
+const dist = path.join(root, 'dist');
+const appDist = path.join(dist, 'app');
+const appSrc = path.join(root, 'src', 'app');
+
+const watch = process.argv.includes('--watch');
+const serve = process.argv.includes('--serve');
+
+// Runtime asset directories: ScratchJr fetches these by path at runtime, so
+// they are copied verbatim rather than being run through the bundler.
+const ASSET_DIRS = [
+    'assets', 'css', 'inapp', 'localizations', 'pnglibrary', 'samples', 'sounds', 'svglibrary'
+];
+const ASSET_FILES = ['media.json', 'settings.json'];
+const PAGES = ['index.html', 'home.html', 'editor.html', 'gettingstarted.html'];
+
+function log (...args) {
+    console.log('[build]', ...args);
+}
+
+function rimraf (target) {
+    fs.rmSync(target, {recursive: true, force: true});
+}
+
+function copyDir (from, to) {
+    fs.cpSync(from, to, {recursive: true});
+}
+
+function walk (dir, base = dir, out = []) {
+    for (const entry of fs.readdirSync(dir, {withFileTypes: true})) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+            walk(full, base, out);
+        } else {
+            out.push(path.relative(base, full).split(path.sep).join('/'));
+        }
+    }
+    return out;
+}
+
+// ---- 1. Bundle the app ---------------------------------------------------
+
+/**
+ * Snap.svg 0.5.1 on npm does not survive modern bundlers, so the copy already
+ * vendored in this repo is used instead. Only Snap.path.isPointInside is called.
+ */
+const snapAlias = {
+    name: 'snap-alias',
+    setup (build) {
+        build.onResolve({filter: /^snapsvg$/}, () => ({
+            path: path.join(root, 'web', 'snap-shim.js')
+        }));
+    }
+};
+
+const appBundle = {
+    entryPoints: [path.join(root, 'web', 'entry.js')],
+    outfile: path.join(appDist, 'scratchjr.js'),
+    bundle: true,
+    format: 'iife',
+    target: ['es2020'],
+    minify: !watch,
+    sourcemap: watch,
+    legalComments: 'none',
+    plugins: [snapAlias],
+    logLevel: 'info'
+};
+
+const landingBundle = {
+    entryPoints: [path.join(root, 'web', 'landing.js')],
+    outfile: path.join(dist, 'install.js'),
+    bundle: true,
+    format: 'iife',
+    target: ['es2020'],
+    minify: !watch,
+    logLevel: 'info'
+};
+
+// ---- 2. Copy assets ------------------------------------------------------
+
+function copyAppAssets () {
+    for (const dir of ASSET_DIRS) {
+        copyDir(path.join(appSrc, dir), path.join(appDist, dir));
+    }
+    for (const file of ASSET_FILES) {
+        fs.copyFileSync(path.join(appSrc, file), path.join(appDist, file));
+    }
+
+    // Loaded as a classic script; see web/snap-shim.js for why.
+    fs.copyFileSync(
+        path.join(appSrc, 'src', 'snap', 'snap.svg-min.js'),
+        path.join(appDist, 'snap.svg-min.js')
+    );
+
+    // sql.js needs its WebAssembly module beside the app pages. esbuild resolves
+    // the package's "browser" export, so it is the -browser build that is loaded
+    // and its .wasm file that must be present under that exact name.
+    for (const wasm of ['sql-wasm-browser.wasm', 'sql-wasm.wasm']) {
+        fs.copyFileSync(
+            path.join(root, 'node_modules', 'sql.js', 'dist', wasm),
+            path.join(appDist, wasm)
+        );
+    }
+}
+
+function copyLandingAssets () {
+    fs.copyFileSync(path.join(root, 'web', 'landing', 'index.html'), path.join(dist, 'index.html'));
+    for (const file of ['pricing.css', 'scratchformac.png', 'scratchforwin.png']) {
+        const from = path.join(root, 'docs', file);
+        if (fs.existsSync(from)) {
+            fs.copyFileSync(from, path.join(dist, file));
+        }
+    }
+}
+
+// ---- 3. Rewrite the app's HTML ------------------------------------------
+
+const HEAD_TAGS = `<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#000000">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="ScratchJr">
+<link rel="icon" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/icon-180.png">`;
+
+function rewritePages () {
+    for (const page of PAGES) {
+        let html = fs.readFileSync(path.join(appSrc, page), 'utf8');
+
+        // Drop the Electron bridge and the untranspiled module entry point.
+        html = html.replace(/^[ \t]*<script src=['"]\.\.\/electronClient\.js['"]><\/script>\n?/m, '');
+        html = html.replace(
+            /^[ \t]*<script type="text\/javascript" src="appEntry\.js"><\/script>\n?/m,
+            HEAD_TAGS + '\n<script src="snap.svg-min.js"></script>\n<script src="scratchjr.js"></script>\n'
+        );
+
+        if (html.includes('electronClient') || html.includes('appEntry.js')) {
+            throw new Error('Failed to rewrite script tags in ' + page);
+        }
+        if (!html.includes('scratchjr.js')) {
+            throw new Error('Bundle tag missing from ' + page);
+        }
+
+        fs.writeFileSync(path.join(appDist, page), html);
+    }
+}
+
+// ---- 4. Sound manifest ---------------------------------------------------
+
+/**
+ * ScratchJr asks for sounds by bare filename. On the desktop the host searched
+ * the app directory; here the lookup table is built once at build time so the
+ * interface can resolve a name to a URL synchronously.
+ */
+function writeSoundManifest () {
+    const manifest = {};
+    const audio = /\.(wav|mp3|m4a|ogg|webm)$/i;
+
+    for (const dir of ['sounds', 'samples', '']) {
+        const from = dir ? path.join(appSrc, dir) : appSrc;
+        if (!fs.existsSync(from)) {
+            continue;
+        }
+        for (const entry of fs.readdirSync(from, {withFileTypes: true})) {
+            if (entry.isFile() && audio.test(entry.name)) {
+                // First directory wins, matching the desktop search order.
+                if (!manifest[entry.name]) {
+                    manifest[entry.name] = dir ? dir + '/' + entry.name : entry.name;
+                }
+            }
+        }
+    }
+
+    fs.writeFileSync(path.join(appDist, 'sound-manifest.json'), JSON.stringify(manifest, null, 2));
+    return Object.keys(manifest).length;
+}
+
+// ---- 4b. Stylesheet bundle -----------------------------------------------
+
+/**
+ * ScratchJr builds its stylesheets synchronously, before first paint, via
+ * preprocessAndLoadCss(). A synchronous XMLHttpRequest is the only way to
+ * serve that -- and Chrome does not route synchronous XHR through the service
+ * worker, so it fails the moment the app is offline. Emitting the stylesheets
+ * as one JSON file lets the host answer those reads from memory instead.
+ */
+function writeStyleBundle () {
+    const styles = {};
+
+    for (const dir of ['css', 'inapp/style']) {
+        const from = path.join(appSrc, dir);
+        for (const entry of fs.readdirSync(from)) {
+            if (entry.endsWith('.css')) {
+                const key = dir + '/' + entry;
+                styles[key] = fs.readFileSync(path.join(from, entry), 'utf8');
+            }
+        }
+    }
+
+    // Written as a module so it is inlined into the bundle: the stylesheets
+    // must be in hand before the first line of ScratchJr runs, which rules out
+    // fetching them.
+    fs.writeFileSync(
+        path.join(root, 'web', 'styles.generated.js'),
+        '// Generated by build.mjs. Do not edit.\nexport default ' + JSON.stringify(styles) + ';\n'
+    );
+    return Object.keys(styles).length;
+}
+
+// ---- 5. Icons ------------------------------------------------------------
+
+const ICON_SIZES = [96, 128, 180, 192, 256, 384, 512, 1024];
+
+function writeIcons () {
+    const iconsDist = path.join(dist, 'icons');
+    fs.mkdirSync(iconsDist, {recursive: true});
+
+    const source = path.join(root, 'src', 'icons', 'png', '1024x1024.png');
+
+    for (const size of ICON_SIZES) {
+        const target = path.join(iconsDist, `icon-${size}.png`);
+        const existing = path.join(root, 'src', 'icons', 'png', `${size}x${size}.png`);
+        if (fs.existsSync(existing)) {
+            fs.copyFileSync(existing, target);
+            continue;
+        }
+        // sips ships with macOS; on other platforms fall back to the 1024 icon.
+        try {
+            execFileSync('sips', ['-z', String(size), String(size), source, '--out', target],
+                {stdio: 'ignore'});
+        } catch (e) {
+            fs.copyFileSync(source, target);
+        }
+    }
+    return ICON_SIZES.length;
+}
+
+// ---- 6. Manifest ---------------------------------------------------------
+
+function writeWebManifest () {
+    const manifest = {
+        id: '/',
+        name: 'ScratchJr',
+        short_name: 'ScratchJr',
+        description: 'ScratchJr - an introductory programming language for young children.',
+        // Scope covers the landing page so the browser can offer to install
+        // from there; launching goes straight into the app.
+        scope: '/',
+        start_url: '/app/index.html',
+        display: 'standalone',
+        orientation: 'landscape',
+        background_color: '#000000',
+        theme_color: '#000000',
+        icons: ICON_SIZES.map((size) => ({
+            src: `/icons/icon-${size}.png`,
+            sizes: `${size}x${size}`,
+            type: 'image/png',
+            purpose: 'any'
+        })).concat([{
+            src: '/icons/icon-512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable'
+        }])
+    };
+    fs.writeFileSync(path.join(dist, 'manifest.webmanifest'), JSON.stringify(manifest, null, 2));
+}
+
+// ---- 7. Service worker ---------------------------------------------------
+
+function writeServiceWorker () {
+    const files = walk(dist)
+        .filter((file) => file !== 'sw.js')
+        .map((file) => '/' + file);
+
+    // The app pages are also reachable as directory URLs.
+    files.push('/app/');
+
+    const fingerprint = createHash('sha256')
+        .update(files.join('\n'))
+        .update(fs.readFileSync(path.join(appDist, 'scratchjr.js')))
+        .digest('hex')
+        .slice(0, 12);
+
+    const template = fs.readFileSync(path.join(root, 'web', 'sw.js'), 'utf8');
+    const sw = template
+        .replace('__CACHE_NAME__', 'scratchjr-' + fingerprint)
+        .replace('__PRECACHE__', JSON.stringify(files));
+
+    fs.writeFileSync(path.join(dist, 'sw.js'), sw);
+    return files.length;
+}
+
+// ---- Run -----------------------------------------------------------------
+
+async function build () {
+    const started = Date.now();
+    rimraf(dist);
+    fs.mkdirSync(appDist, {recursive: true});
+
+    const styles = writeStyleBundle();
+
+    await esbuild.build(appBundle);
+    await esbuild.build(landingBundle);
+
+    copyAppAssets();
+    copyLandingAssets();
+    rewritePages();
+
+    const sounds = writeSoundManifest();
+    const icons = writeIcons();
+    writeWebManifest();
+    const precached = writeServiceWorker();
+
+    const bytes = walk(dist).reduce((sum, file) => sum + fs.statSync(path.join(dist, file)).size, 0);
+    log(`${precached} files, ${sounds} sounds, ${styles} stylesheets, ${icons} icons, ${(bytes / 1048576).toFixed(1)} MB in ${Date.now() - started}ms`);
+}
+
+const MIME = {
+    '.html': 'text/html; charset=utf-8',
+    '.js': 'text/javascript; charset=utf-8',
+    '.json': 'application/json; charset=utf-8',
+    '.webmanifest': 'application/manifest+json; charset=utf-8',
+    '.css': 'text/css; charset=utf-8',
+    '.svg': 'image/svg+xml',
+    '.png': 'image/png',
+    '.jpg': 'image/jpeg',
+    '.wav': 'audio/wav',
+    '.mp3': 'audio/mpeg',
+    '.mp4': 'video/mp4',
+    '.wasm': 'application/wasm',
+    '.ttf': 'font/ttf',
+    '.otf': 'font/otf',
+    '.woff': 'font/woff',
+    '.woff2': 'font/woff2'
+};
+
+function startServer (port = 4173) {
+    createServer((req, res) => {
+        const url = decodeURIComponent(req.url.split('?')[0]);
+        let file = path.join(dist, url);
+        if (fs.existsSync(file) && fs.statSync(file).isDirectory()) {
+            file = path.join(file, 'index.html');
+        }
+        if (!file.startsWith(dist) || !fs.existsSync(file)) {
+            res.writeHead(404);
+            res.end('Not found');
+            return;
+        }
+        res.writeHead(200, {
+            'Content-Type': MIME[path.extname(file)] || 'application/octet-stream',
+            'Cache-Control': 'no-store'
+        });
+        fs.createReadStream(file).pipe(res);
+    }).listen(port, () => log(`serving http://localhost:${port}`));
+}
+
+await build();
+
+if (serve) {
+    startServer();
+}
+if (watch) {
+    fs.watch(path.join(root, 'web'), {recursive: true}, () => build().catch(console.error));
+    fs.watch(path.join(appSrc, 'src'), {recursive: true}, () => build().catch(console.error));
+    log('watching for changes');
+}

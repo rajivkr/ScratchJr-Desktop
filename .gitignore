@@ -1,14 +1,17 @@
+# Dependencies
 node_modules
+
+# Build output
+dist
 out
+
+# Editor / OS noise
 **/.DS_Store
-src/.DS_Store
-src/.DS_Store
-src/app/.DS_Store
-src/app/inapp/.DS_Store
-src/app/src/.DS_Store
-src/app/src/editor/.DS_Store
-.DS_Store
-.DS_Store
-.DS_Store
-buglist.txt
+.vscode
+.idea
+
+# Logs and scratch files
+*.log
 src/debug.log
+buglist.txt
+web/styles.generated.js

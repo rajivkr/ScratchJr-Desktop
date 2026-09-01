@@ -14,6 +14,28 @@ export function libInit () {
     frame = document.getElementById('frame');
 }
 /**
+ * Evaluate one ${} expression from a stylesheet.
+ *
+ * These used to go through a direct eval(), which picked the identifiers it
+ * needed out of this module's scope. That only worked because the source was
+ * never bundled or minified -- a minifier renames scaleMultiplier and the
+ * stylesheets stop resolving, silently collapsing every dimension in the app.
+ * Passing the identifiers in explicitly makes the dependency real and survives
+ * minification. The stylesheets use only these four.
+ */
+function evaluateCssExpression (expression) {
+    try {
+        return Function(
+            'scaleMultiplier', 'css_vw', 'css_vh', 'Math',
+            'return (' + expression + ');'
+        )(scaleMultiplier, css_vw, css_vh, Math);
+    } catch (e) {
+        console.log('Could not evaluate style expression', expression, e); // eslint-disable-line no-console
+        return '';
+    }
+}
+
+/**
  * Takes a string and evaluates all ${} as JavaScript and returns the resulting string.
  */
 export function preprocess (s) {
@@ -29,7 +51,7 @@ export function preprocess (s) {
             var end = s.indexOf('}', start);
             if (end != -1) {
                 var expression = s.substring(start, end);
-                result += eval(expression);  // eslint-disable-line no-eval
+                result += evaluateCssExpression(expression);
                 i = end + 1;
             } else {
                 result += '$';
@@ -45,12 +67,29 @@ export function preprocess (s) {
 }
 
 /**
+ * Stylesheets handed over by the host before the app starts.
+ *
+ * The stylesheets have to be built before first paint, which means reading them
+ * synchronously. On the tablet and desktop hosts that was a local file read. In
+ * a browser the only synchronous option is XMLHttpRequest, which Chrome refuses
+ * to route through the service worker -- so it fails whenever the device is
+ * offline. The browser host therefore hands the stylesheets over up front.
+ */
+var preloadedStyles = {};
+
+export function setPreloadedStyles (bundle) {
+    preloadedStyles = bundle || {};
+}
+
+/**
  * Load the URL synchronously (fine because it's file://), preprocess the result and return the string.
  */
 export function preprocessAndLoad (url) {
   
     var responseText = null;
-    if (window.tablet) {
+    if (Object.prototype.hasOwnProperty.call(preloadedStyles, url)) {
+        responseText = preloadedStyles[url];
+    } else if (window.tablet) {
     	responseText = window.tablet.io_gettextresource(url);
     } else {  // hopefully unused
   

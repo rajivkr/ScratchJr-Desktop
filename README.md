@@ -1,115 +1,82 @@
 ## Official disclaimer
 Scratch and ScratchJr are trademarks of Massachusetts Institute of Technology, which does not sponsor, endorse, or authorize this content. See scratchjr.org for more information.
 
-## Downloads 
-[Download ScratchJr for Desktop](https://jfo8000.github.io/ScratchJr-Desktop/)
+## Install
+Visit the site and press Install. Works on Mac, Windows, iPad and Android.
 
 
 ## The geeky stuff
 
-This repository contains a port of ScratchJr for Desktop. 
+This repository contains a port of ScratchJr that installs as a Progressive Web App
+on Mac, Windows, iPad and Android.
 
-It has been ported with love from the iPad / Android editions to Mac/Windows
-as an independent, open source community project.
-
+It has been ported with love from the iPad / Android editions as an independent,
+open source community project. It began life as an Electron desktop port; the
+Electron shell has been replaced by a browser-based host so the app can be
+installed from a URL with no download and no code-signing warnings.
 
 If you are looking for the Official ScratchJr build from MIT for Android and iPad, visit
 the LLK/ScratchJr (https://github.com/LLK/scratchjr) repository.
 
-## About Electron and Electron Forge
-
-This port makes use of Electron to host the ScratchJR HTML5 application on Mac and Windows.
-
-Electron (https://electronjs.org/) is a framework for creating native applications with web technologies like JavaScript, HTML, and CSS.   
-
-Electron Forge (https://electronforge.io/) stitches together several electron modules to provide easier support for using the latest version 
-of javascript, making dmg/exe files and installers.     
-
 
 ## Architecture Overview
 
-![Scratch Jr. Architecture Diagram](docs/scratchjr_electron_overview.png)
+ScratchJr talks to its host platform through a single object -- `window.tablet` on
+iOS, `AndroidInterface` on Android. The web build supplies a fourth implementation
+of that same contract, backed only by browser APIs.
 
-* The HTML5 side of Scratch Jr very close to the original ios / android versions.  Some changes had to be made to load modules correctly inside of the electron environment.  
-* Minor changes were made to the CSS stylesheets to support resizing.
-* Touch events were translated to mouse events.
+* The HTML5 side of ScratchJr is unchanged from the original iOS / Android versions.
+* `web/tablet.js` implements the host interface: database, files, sound, recording, camera.
+* `web/db.js` holds the project database in memory with sql.js and mirrors it to IndexedDB.
+* `web/audio.js` and `web/camera.js` handle sound recording and the paint editor's camera.
+* `web/sw.js` precaches the whole app so it runs with no internet connection.
+* `web/landing/` is the page people install from.
 
- 
-## ElectronDesktopInterface as a third tabletInterface
-
-The original html implementation called out to a tabletInterface to make calls to 
-the host operating system (Android / iOS) for filesystem access and audio and video recording.
-
- 
-ElectronDesktopInterface handles these calls and either handles them itself in HTML5 
-(e.g. audio and video recording are achieved through the HTML5 WebRTC apis) or passes them
-onto the electron main process to read and write files / db.
-
-
- 
-## Sql.js 
-
-As the database is rather small we were able to use a version of SQLLite that has been compiled into JavaScript.
+Three files in the original ScratchJr source were touched, all in the platform layer:
+`iPad/iOS.js` (resources resolve asynchronously so they can come from the offline
+cache), `utils/lib.js` (stylesheet expressions no longer go through `eval`, which a
+minifier breaks), and `utils/Localization.js` (dropped the `intl` polyfill, which
+modern browsers make unnecessary).
 
 
-The database is largely the same format as the original ios / android version, but it adds
-a third table called PROJECTFILES.  Instead of writing individual svg, video, and audio files out to 
-the filesystem they are all stored within the PROJECTFILES table.   This was done so that
-you can make a set of Scratch Jr projects as a starter kit. 
+## Storage
+
+The database is the same format as the original iOS / Android version, plus a
+PROJECTFILES table holding media inline rather than as loose files. It lives in
+IndexedDB on the device. Nothing is uploaded anywhere and there is no account to
+create.
+
 
 ## Building
 
-You will need node.js installed. (https://nodejs.org/en/)
-Also git (which you may already have).
+Requires Node.js.
 
+    npm install
+    npm run build      # writes dist/
+    npm run dev        # build, watch, and serve on http://localhost:4173
 
-* <tt>npm install</tt>
-* <tt>npm run start</tt>
-
-
-## Packaging for Windows / Mac
-
-For windows installers, you must do this from a Windows machine.  Same for Mac.
-
-* <tt>npm run package</tt>
-
-
-## Running lint
-
-We use eslint to verify the install.  Our configuration is similar to airbnb, however 
-several style rules had to be adapted to avoid changing the original scratch sources.
-
-* <tt>npm run lint</tt>
+`dist/` is a static directory: the landing page at the root, the app under `/app/`.
+Deploying is a matter of serving it. `vercel.json` configures a Vercel deployment.
 
 
 ## Debugging
 
-To debug the html files, audio and video recording you can simply run
-* <tt>npm run start</tt>
+    npm run dev
 
-A chrome inspector window will appear by default.
+Then open http://localhost:4173 and use the browser's developer tools.
 
-To debug writing to the filesystem and database queries, you need to debug the main 
-electron process.  This is done by 
-
-* <tt>npm run debugMain</tt>
-
-To get the chrome inspector window, open another instance of the real chrome on your computer
-and navigate to chrome://inspect
-
-There should be a listing there for the electron main process.
-Note between debugging sessions you may have to close and reopen this chrome://inspect window.
+To test offline behaviour, load the app once so the service worker precaches it,
+then stop the dev server and reload.
 
 
-## Directory Structure and Projects
-This repository has the following directory structure:
+## Directory Structure
 
-* <tt>package.json</tt> - Contains eslint rules, modules used, build and packaging scripts
-* <tt>forge.config.js</tt> - Contains rules for packaging for windows and Mac
-* <tt>src/app/</tt> - Shared JavaScript code for iOS and Android and Desktop common client. This is where most changes should be made for features, bug fixes, UI, etc.
-* <tt>src/icons/</tt> - Icons for Mac / Windows and ( in theory Linux  NYI) 
-* <tt>out/</tt> - Build scripts and other executables
-* <tt>docs/</tt> - Developer Documentation
+* <tt>web/</tt> - The browser host: window.tablet, database, sound, camera, service worker, landing page
+* <tt>build.mjs</tt> - Bundles the app, copies assets, and generates the manifest, icons and service worker
+* <tt>src/app/</tt> - ScratchJr itself, shared with the iOS and Android editions. Most feature and UI changes belong here.
+* <tt>src/icons/</tt> - Source icons
+* <tt>dist/</tt> - Build output (not checked in)
+* <tt>docs/</tt> - Developer documentation
 
 
 ## Acknowledgments
@@ -117,9 +84,8 @@ This repository has the following directory structure:
 Thank you to the official Scratch team and their supporters.  Their contributions are listed here:
 https://github.com/LLK/scratchjr
 
-In addition, thank you to the folks working on Electron, ElectronForge, and Sql.js.
-
-Thank you to AppVeyor and Travis CL for providing Mac, Windows and Linux builds.
+In addition, thank you to the folks working on Sql.js, Snap.svg and esbuild, and to
+the authors of the original Electron desktop port this build grew out of.
 
 
 ## Disclaimers

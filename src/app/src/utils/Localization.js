@@ -1,49 +1,14 @@
-import Intl from 'intl';
-import IntlMessageFormat  from 'intl-messageformat';
+import {IntlMessageFormat} from 'intl-messageformat';
 
 import Cookie from './Cookie';
 import IO from '../iPad/IO';
 
+// Localization.localize() reads this off the global namespace.
+window.IntlMessageFormat = IntlMessageFormat;
 
-// the subsquent requires need IntlMessageFormat defined - 
-// so pop it in the global namespace.
-global.IntlMessageFormat = IntlMessageFormat;
-
-
-
-if (!window.Intl) {
-    window.Intl = Intl;
-}
-
-
-require('intl/locale-data/jsonp/ca.js');
-require('intl/locale-data/jsonp/de.js');
-require('intl/locale-data/jsonp/en.js');
-require('intl/locale-data/jsonp/es.js');
-require('intl/locale-data/jsonp/fr.js');
-require('intl/locale-data/jsonp/it.js');
-require('intl/locale-data/jsonp/nl.js');
-require('intl/locale-data/jsonp/ja.js');
-require('intl/locale-data/jsonp/pt.js');
-require('intl/locale-data/jsonp/sv.js');
-require('intl/locale-data/jsonp/th.js');
-require('intl/locale-data/jsonp/zh.js');
-
-//require('expose?IntlMessageFormat!intl-messageformat');
-
-
-require('intl-messageformat/dist/locale-data/ca');
-require('intl-messageformat/dist/locale-data/de');
-require('intl-messageformat/dist/locale-data/en');
-require('intl-messageformat/dist/locale-data/es');
-require('intl-messageformat/dist/locale-data/fr');
-require('intl-messageformat/dist/locale-data/it');
-require('intl-messageformat/dist/locale-data/nl');
-require('intl-messageformat/dist/locale-data/ja');
-require('intl-messageformat/dist/locale-data/pt');
-require('intl-messageformat/dist/locale-data/sv');
-require('intl-messageformat/dist/locale-data/th');
-require('intl-messageformat/dist/locale-data/zh');
+// The `intl` polyfill and its per-locale data files that used to be required
+// here are no longer needed: every browser that can run this app ships full
+// Intl support, including Intl.PluralRules, which intl-messageformat needs.
 
 
 let currentLocale;

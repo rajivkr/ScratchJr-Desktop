@@ -180,8 +180,12 @@ export default class iOS {
 
 		
 	static gettextresource (filename, fcn) {
-        var result = tabletInterface.io_gettextresource(filename);
-        if (fcn) {
+        // The tablet hosts read from the local filesystem and return the text
+        // directly. The browser host needs to go through the offline cache,
+        // which is asynchronous, so it takes the callback and returns undefined
+        // to say it will call back itself.
+        var result = tabletInterface.io_gettextresource(filename, fcn);
+        if (fcn && (result !== undefined)) {
             fcn(result);
         }
     }
