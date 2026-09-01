@@ -12,6 +12,7 @@
  */
 
 import WebTabletInterface, {setSoundManifest} from './tablet.js';
+import mountInstallPrompt from './install-prompt.js';
 import * as DB from './db.js';
 
 import {setPreloadedStyles} from '../src/app/src/utils/lib.js';
@@ -58,3 +59,4 @@ boot().catch((e) => {
 });
 
 registerServiceWorker();
+mountInstallPrompt();

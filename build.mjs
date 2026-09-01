@@ -1,8 +1,15 @@
 /*
  * Build the ScratchJr PWA.
  *
- *   dist/                landing page, manifest, service worker, icons
- *   dist/app/            ScratchJr itself, byte-for-byte the same assets
+ *   dist/                ScratchJr itself, plus the manifest, service worker
+ *                        and icons. The app is the site.
+ *   dist/about.html      What this is, and the MIT trademark notice.
+ *
+ * ScratchJr sits at the root deliberately. The installed app's scope is the
+ * whole origin, so anything inside that scope can end up rendered in the app
+ * window. Putting a separate landing page in there meant the app could open on
+ * it, which took a redirect in the head to paper over. With the app at the
+ * root there is nothing else for it to land on.
  *
  * The app's HTML is copied with only its two <script> tags rewritten: the
  * Electron client and the raw ES-module entry point are replaced by one bundle.
@@ -18,7 +25,7 @@ import {fileURLToPath} from 'node:url';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dist = path.join(root, 'dist');
-const appDist = path.join(dist, 'app');
+const appDist = dist;
 const appSrc = path.join(root, 'src', 'app');
 
 // Absolute origin the site is served from. Needed for related_applications,
@@ -88,16 +95,6 @@ const appBundle = {
     logLevel: 'info'
 };
 
-const landingBundle = {
-    entryPoints: [path.join(root, 'web', 'landing.js')],
-    outfile: path.join(dist, 'install.js'),
-    bundle: true,
-    format: 'iife',
-    target: ['es2020'],
-    minify: !watch,
-    logLevel: 'info'
-};
-
 // ---- 2. Copy assets ------------------------------------------------------
 
 function copyAppAssets () {
@@ -131,7 +128,8 @@ function copyAppAssets () {
 }
 
 function copyLandingAssets () {
-    fs.copyFileSync(path.join(root, 'web', 'landing', 'index.html'), path.join(dist, 'index.html'));
+    // Reachable, but not in anybody's way: the app owns the front door.
+    fs.copyFileSync(path.join(root, 'web', 'landing', 'index.html'), path.join(dist, 'about.html'));
     for (const file of ['pricing.css', 'scratchformac.png', 'scratchforwin.png']) {
         const from = path.join(root, 'docs', file);
         if (fs.existsSync(from)) {
@@ -286,7 +284,7 @@ function writeWebManifest () {
         // Scope covers the landing page so the browser can offer to install
         // from there; launching goes straight into the app.
         scope: '/',
-        start_url: '/app/index.html',
+        start_url: '/index.html',
         display: 'standalone',
         orientation: 'landscape',
         // Lets a page ask navigator.getInstalledRelatedApps() whether this app
@@ -330,10 +328,10 @@ function isShell (file) {
         file.endsWith('.webmanifest') ||
         file.endsWith('.css') ||
         file.startsWith('icons/') ||
-        file.startsWith('app/localizations/') ||
-        file === 'app/media.json' ||
-        file === 'app/settings.json' ||
-        file === 'app/sound-manifest.json';
+        file.startsWith('localizations/') ||
+        file === 'media.json' ||
+        file === 'settings.json' ||
+        file === 'sound-manifest.json';
 }
 
 function writeServiceWorker () {
@@ -343,8 +341,8 @@ function writeServiceWorker () {
     const shell = files.filter(isShell).map((file) => '/' + file);
     const rest = files.filter((file) => !isShell(file)).map((file) => '/' + file);
 
-    // The app pages are also reachable as directory URLs.
-    shell.push('/app/');
+    // The splash is also reachable as the bare origin.
+    shell.push('/');
 
     const fingerprint = createHash('sha256')
         .update(files.join('\n'))
@@ -365,7 +363,7 @@ function writeServiceWorker () {
     fs.writeFileSync(path.join(dist, 'sw.js'), sw);
 
     const shellBytes = shell
-        .filter((url) => url !== '/app/')
+        .filter((url) => url !== '/')
         .reduce((sum, url) => sum + fs.statSync(path.join(dist, url.slice(1))).size, 0);
 
     return {total: shell.length + rest.length, shell: shell.length, shellBytes};
@@ -381,7 +379,6 @@ async function build () {
     const styles = writeStyleBundle();
 
     await esbuild.build(appBundle);
-    await esbuild.build(landingBundle);
 
     copyAppAssets();
     copyLandingAssets();

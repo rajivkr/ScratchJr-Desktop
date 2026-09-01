@@ -15,16 +15,6 @@
  
     <!-- Custom styles for this template -->
     <link href="pricing.css" rel="stylesheet">
-    <script>
-      // Running in the installed app? Then this page must never appear. Done
-      // inline in the head, before anything renders, so the installed app goes
-      // straight to ScratchJr with no flash of the landing page.
-      if (window.matchMedia('(display-mode: standalone)').matches ||
-          window.matchMedia('(display-mode: window-controls-overlay)').matches ||
-          window.navigator.standalone === true) {
-        window.location.replace('/app/index.html');
-      }
-    </script>
     <link rel="manifest" href="/manifest.webmanifest">
     <meta name="theme-color" content="#3099C9">
     <link rel="icon" href="/icons/icon-256.png">
@@ -110,8 +100,9 @@
       <p class="lead">
       
       <br/>
-      Install ScratchJr on your Mac, Windows PC, iPad, or Android tablet.
-      <br/>One button. No download, and no security warnings to click through.
+      Open ScratchJr and it offers to install itself on your Mac, Windows PC,
+      iPad, or Android tablet.
+      <br/>No download, and no security warnings to click through.
       
       </p>
     </div>
@@ -131,8 +122,7 @@
             </div>
             By installing this software, you agree to the <a href='https://github.com/jfo8000/ScratchJr-Desktop/blob/master/LICENSE'>terms and conditions of the MIT license</a>.
 
-            <button type="button" id="sjr-install-button" class="btn btn-lg btn-block btn-primary">Install ScratchJr</button>
-            <p id="sjr-install-note" class="text-muted mt-2 mb-0" style="font-size: 0.9rem;"></p>
+            <a href="/" class="btn btn-lg btn-block btn-primary">Open ScratchJr</a>
           </div>
         </div>
         </div>
@@ -269,6 +259,5 @@ Finally, a special thank you to <a href="https://www.scopeiteducation.edu.au/">S
     <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.0/umd/popper.min.js" integrity="sha384-cs/chFZiN24E4KMATLdqdvsezGxaGsi4hLGOzlXwp5UZB1LY//20VyM2taTB4QvJ" crossorigin="anonymous"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.1.0/js/bootstrap.min.js" integrity="sha384-uefMccjFJAIv6A+rW+L4AHf99KvxDjWSu1z9VI8SKNVmz4sk7buKt/6v9KI65qnm" crossorigin="anonymous"></script>
-    <script src="/install.js"></script>
   </body>
 </html>
