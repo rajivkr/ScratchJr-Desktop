@@ -61,8 +61,14 @@
         * Killswitch. Inside an installed window the bar cannot render at all,
         * whatever the JavaScript believes -- !important beats the inline
         * display the script sets.
+        *
+        * display-mode: fullscreen is left out on purpose: a plain browser
+        * window in macOS fullscreen matches it, which would hide the bar from
+        * a reader who has done nothing but fill their screen. The manifest
+        * asks for standalone, so the installed app never reports fullscreen
+        * and nothing is lost by leaving it out.
         */
-       @media all and (display-mode: standalone), (display-mode: fullscreen), (display-mode: window-controls-overlay) {
+       @media all and (display-mode: standalone), (display-mode: window-controls-overlay) {
         #pwa-install-bar,
         #pwa-install-btn {
          display: none !important;

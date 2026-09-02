@@ -47,28 +47,16 @@
     var deferredPrompt = null;
 
     /*
-     * A window that must not be offered an install: the installed app, in any
-     * of the shapes it can take.
-     */
-    var isStandalone =
-        window.matchMedia('(display-mode: standalone)').matches ||
-        window.matchMedia('(display-mode: fullscreen)').matches ||
-        window.matchMedia('(display-mode: window-controls-overlay)').matches ||
-        window.navigator.standalone === true;
-
-    /*
-     * A window that really is the installed app -- which is a narrower thing.
+     * Is this the installed app?
      *
-     * display-mode: fullscreen belongs in the test above, because the button
-     * must never appear in an installed window and an app launched fullscreen
-     * reports it. It cannot be used to decide a redirect: a plain browser
-     * window put into fullscreen reports it too. Measured on this machine --
-     * a normal Chrome tab in a macOS fullscreen window matches it.
-     *
-     * Redirecting on that sent a fullscreen browser to /app/, which is not
-     * standalone, so the app sent it back to the landing page, which sent it
-     * to /app/ again: a loop with no way out but leaving fullscreen. So the
-     * redirect asks only what an installed window can actually be.
+     * Deliberately not display-mode: fullscreen. A plain browser window put
+     * into macOS fullscreen matches it -- measured twice on this machine, and
+     * both times it took the bar away from an ordinary reader who had done
+     * nothing but fill their screen. It protects against nothing here either:
+     * the manifest asks for display: standalone, so an installed ScratchJr
+     * window reports standalone, never fullscreen. Standalone, the
+     * window-controls-overlay variant of it, and Safari's own flag are the
+     * whole of what an installed copy can be.
      */
     function isInstalledWindow () {
         return window.matchMedia('(display-mode: standalone)').matches ||
@@ -76,14 +64,12 @@
             window.navigator.standalone === true;
     }
 
-    // Standalone early exit. Checked before any listener is attached, so the
-    // installed app carries none of this.
-    if (isStandalone) {
+    // Early exit, before a single listener is attached, so the installed app
+    // carries none of this.
+    if (isInstalledWindow()) {
         // The installed app has no business on the landing page. If it lands
         // here -- a bookmark, a shared link -- send it into ScratchJr.
-        if (isInstalledWindow()) {
-            window.location.replace(APP_URL);
-        }
+        window.location.replace(APP_URL);
         return;
     }
 
