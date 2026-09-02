@@ -4,6 +4,9 @@ Scratch and ScratchJr are trademarks of Massachusetts Institute of Technology, w
 ## Install
 Visit the site and press Install. Works on Mac, Windows, iPad and Android.
 
+ScratchJr only runs as an installed app. A browser tab shows the install screen
+and nothing else; the app itself starts only in its own window.
+
 
 ## The geeky stuff
 
@@ -30,6 +33,7 @@ of that same contract, backed only by browser APIs.
 * `web/db.js` holds the project database in memory with sql.js and mirrors it to IndexedDB.
 * `web/audio.js` and `web/camera.js` handle sound recording and the paint editor's camera.
 * `web/sw.js` precaches the whole app so it runs with no internet connection.
+* `web/install-gate.js` stands in front of the app in a browser tab and offers the install.
 * `web/landing/` is the page people install from.
 
 Three files in the original ScratchJr source were touched, all in the platform layer:
@@ -55,15 +59,19 @@ Requires Node.js.
     npm run build      # writes dist/
     npm run dev        # build, watch, and serve on http://localhost:4173
 
-`dist/` is a static directory: the landing page at the root, the app under `/app/`.
-Deploying is a matter of serving it. `vercel.json` configures a Vercel deployment.
+`dist/` is a static directory: the app at the root, the landing page at
+`/about.html`. Deploying is a matter of serving it. `vercel.json` configures a
+Vercel deployment.
 
 
 ## Debugging
 
     npm run dev
 
-Then open http://localhost:4173 and use the browser's developer tools.
+Then open http://localhost:4173 and use the browser's developer tools. localhost
+is the one place the app runs in a tab without being installed, so development
+does not mean reinstalling after every change. Add `?gate` to the URL to see the
+install screen a real visitor gets.
 
 To test offline behaviour, load the app once so the service worker precaches it,
 then stop the dev server and reload.

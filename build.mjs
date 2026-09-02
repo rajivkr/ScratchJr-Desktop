@@ -11,6 +11,10 @@
  * it, which took a redirect in the head to paper over. With the app at the
  * root there is nothing else for it to land on.
  *
+ * The app's pages are served to browsers as well as to the installed app, but
+ * only the installed app runs them: web/install-gate.js stops ScratchJr from
+ * starting in a tab and offers the install instead.
+ *
  * The app's HTML is copied with only its two <script> tags rewritten: the
  * Electron client and the raw ES-module entry point are replaced by one bundle.
  * No other markup, stylesheet, or image is touched.
