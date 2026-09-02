@@ -37,6 +37,14 @@ of that same contract, backed only by browser APIs.
 * `web/standalone-only.js` decides whether this window may run the app, and redirects it if not.
 * `web/landing/` and `web/install-banner.js` are the page people install from.
 
+The install bar picks between offering an install, offering to open an installed
+copy, and saying neither is possible. Installed is only ever claimed on proof
+from `navigator.getInstalledRelatedApps()`, which reports this app when the
+manifest lists itself under `related_applications` and it was installed in the
+same browser profile. Silence from `beforeinstallprompt` proves nothing: a
+browser is equally silent when the app is installed and when it is muting its
+own install offer.
+
 Three files in the original ScratchJr source were touched, all in the platform layer:
 `iPad/iOS.js` (resources resolve asynchronously so they can come from the offline
 cache), `utils/lib.js` (stylesheet expressions no longer go through `eval`, which a
@@ -76,11 +84,20 @@ place the app runs in a tab without being installed, so development does not
 mean reinstalling after every change; add `?landing` to an app URL to take a
 visitor's route instead.
 
-Note that a browser mutes its own install offer on an origin for about a
-fortnight after showing it once, which includes localhost and includes any
-origin this has been tested on. If the banner does not appear, that is usually
-why: clear the site's data in the browser's site settings, or use a fresh
-profile.
+Note that a browser mutes its own install offer on an origin once it has shown
+it, and keeps that mute even after the app is uninstalled -- so the install bar
+will not appear on any origin this has already been tested on. That is almost
+always the reason a first-install flow cannot be reproduced. Three ways out,
+cheapest first:
+
+    # Ignore every engagement check and cooldown, so beforeinstallprompt
+    # fires on every navigation.
+    open -na "Google Chrome" --args --bypass-app-banner-engagement-checks
+
+* Click the icon left of the URL, then Site settings, then Delete data. That
+  clears the origin's `app_banner` content setting along with its storage.
+* Or use a fresh profile, or a different port on localhost -- the mute is
+  per-origin.
 
 To test offline behaviour, load the app once so the service worker precaches it,
 then stop the dev server and reload.

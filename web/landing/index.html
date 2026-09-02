@@ -53,6 +53,7 @@
         */
        #pwa-install-bar,
        #pwa-install-btn,
+       #pwa-open-btn,
        #pwa-install-ios,
        #pwa-installed,
        #pwa-unavailable {
@@ -72,7 +73,8 @@
         */
        @media all and (display-mode: standalone), (display-mode: window-controls-overlay) {
         #pwa-install-bar,
-        #pwa-install-btn {
+        #pwa-install-btn,
+        #pwa-open-btn {
          display: none !important;
         }
        }
@@ -153,14 +155,31 @@
         font-size: 15px;
         cursor: pointer;
        }
-       #pwa-install-btn {
+       #pwa-install-btn,
+       #pwa-open-btn {
         background: #fff;
         color: #166E96;
         font-weight: 700;
         margin-bottom: 10px;
        }
-       #pwa-install-btn:hover {
+       #pwa-install-btn:hover,
+       #pwa-open-btn:hover {
         background: #f2f2f2;
+        color: #166E96;
+        text-decoration: none;
+       }
+       /* The Open control is an anchor, not a button: link capturing only
+          hands off to the installed window for a real link click. */
+       #pwa-open-btn {
+        width: 100%;
+        box-sizing: border-box;
+        border-radius: 12px;
+        padding: 14px;
+        font-family: inherit;
+        font-size: 15px;
+        text-align: center;
+        text-decoration: none;
+        cursor: pointer;
        }
        #pwa-install-later {
         display: block;
@@ -374,6 +393,7 @@ Finally, a special thank you to <a href="https://www.scopeiteducation.edu.au/">S
       2. Scroll down and tap <b>Add to Home Screen</b><br>
       3. Tap <b>Add</b> in the top right
     </div>
+    <a id="pwa-open-btn" href="/app/index.html">Open ScratchJr</a>
     <div id="pwa-installed" class="pwa-steps">
       Search your device for <b>ScratchJr</b> and open it from there.
     </div>

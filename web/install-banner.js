@@ -7,19 +7,23 @@
  *                      install dialog.
  *   Add to Home Screen an iPad, where Safari has no installable event and the
  *                      Share sheet is the only route.
- *   Already installed  only on proof -- getInstalledRelatedApps() naming this
- *                      app. Then there is nothing to install and the bar says
- *                      where to find it instead.
+ *   Open ScratchJr    only on proof -- getInstalledRelatedApps() naming this
+ *                      app as one this browser profile has installed.
  *
  * Proof, not inference. A browser goes quiet for two different reasons: the
  * app is already installed, or it made its own install offer here recently and
- * mutes itself for a fortnight afterwards. The version before this one read
- * every silence as the first and told somebody who had just uninstalled the
- * app to go and search for it. So silence alone now decides nothing: without
- * proof the bar offers the install, which is what a first-time reader needs.
+ * mutes itself afterwards -- and Chromium keeps that mute even after the app
+ * is uninstalled. An earlier version read every silence as "installed" and told
+ * somebody who had just uninstalled the app to go and search for it. So
+ * silence alone decides nothing now: without proof the bar offers the install,
+ * which is what a first-time reader needs and is the harmless way to be wrong.
  *
- * There is no API to launch an installed app from a page, so 'open it' is a
- * sentence about their own device rather than a button that lies.
+ * Open is an <a>, not a button, because Chromium only hands a navigation off
+ * to an installed window for a real user-initiated link click, and only with
+ * the manifest's launch_handler set to focus-existing. Where that hand-off
+ * does not happen the tab simply navigates to the app, the app's own guard
+ * sends it back here, and the flag set on the way out turns this into a line
+ * about where to find the icon rather than the same button again.
  *
  * The markup and every style live in the landing page itself. The bar and the
  * button are display:none in CSS until this file reveals them, and a media
@@ -35,6 +39,9 @@
     'use strict';
 
     var DISMISSED_KEY = 'scratchjr-install-dismissed';
+    // Set when Open is pressed; if we are back here, the hand-off did not
+    // happen and offering Open again would just go round.
+    var OPEN_TRIED_KEY = 'scratchjr-open-attempted';
     var APP_URL = '/app/index.html';
 
     // How long to give beforeinstallprompt before concluding it is not coming.
@@ -45,6 +52,7 @@
     var bar = document.getElementById('pwa-install-bar');
     var button = document.getElementById('pwa-install-btn');
     var steps = document.getElementById('pwa-install-ios');
+    var openLink = document.getElementById('pwa-open-btn');
     var installed = document.getElementById('pwa-installed');
     var unavailable = document.getElementById('pwa-unavailable');
     var later = document.getElementById('pwa-install-later');
@@ -110,14 +118,21 @@
     var title = document.getElementById('pwa-title');
     var sub = bar.querySelector('.pwa-sub');
 
-    /** mode: 'install', 'ios', 'installed' (proven), or 'unavailable'. */
+    /**
+     * mode: 'install'   a prompt in hand
+     *       'ios'       Safari, where the Share sheet is the only route
+     *       'installed' proven installed, and Open may hand off
+     *       'find'      proven installed, but Open has already been tried
+     *       'unavailable' no prompt, no proof, nothing this page can do
+     */
     function show (mode) {
         bar.style.display = 'block';
         document.body.classList.add('pwa-bar-open');
 
         button.style.display = mode === 'install' ? 'block' : 'none';
+        openLink.style.display = mode === 'installed' ? 'block' : 'none';
         steps.style.display = mode === 'ios' ? 'block' : 'none';
-        installed.style.display = mode === 'installed' ? 'block' : 'none';
+        installed.style.display = mode === 'find' ? 'block' : 'none';
         unavailable.style.display = mode === 'unavailable' ? 'block' : 'none';
 
         if (mode === 'install') {
@@ -129,8 +144,12 @@
             sub.textContent = 'Add it to your Home Screen to get the app.';
             later.textContent = 'Got it';
         } else if (mode === 'installed') {
-            title.textContent = 'ScratchJr is already installed';
+            title.textContent = 'ScratchJr is installed';
             sub.textContent = 'It is on this device, in its own window.';
+            later.textContent = 'Not now';
+        } else if (mode === 'find') {
+            title.textContent = 'ScratchJr is installed';
+            sub.textContent = 'Your browser did not hand it over automatically.';
             later.textContent = 'Got it';
         } else {
             title.textContent = 'Install ScratchJr';
@@ -143,6 +162,7 @@
         bar.style.display = 'none';
         button.style.display = 'none';
         steps.style.display = 'none';
+        openLink.style.display = 'none';
         installed.style.display = 'none';
         unavailable.style.display = 'none';
         document.body.classList.remove('pwa-bar-open');
@@ -161,6 +181,17 @@
         show('install');
     });
 
+    // Not preventDefault()ed: the navigation is the whole point, and is what
+    // Chromium may capture into the installed window.
+    openLink.addEventListener('click', function () {
+        try {
+            window.sessionStorage.setItem(OPEN_TRIED_KEY, '1');
+        } catch (e) {
+            // Then a failed hand-off shows this bar again, which is no worse
+            // than what a browser without link capturing does anyway.
+        }
+    });
+
     button.addEventListener('click', function () {
         if (!deferredPrompt) {
             // The browser has muted its own offer here. Nothing on this page
@@ -173,6 +204,7 @@
             deferredPrompt = null;
             if (choice.outcome === 'accepted') {
                 show('installed');
+                // appinstalled follows and says the same thing.
             } else {
                 hide();
             }
@@ -183,6 +215,11 @@
     // never goes through the button.
     window.addEventListener('appinstalled', function () {
         deferredPrompt = null;
+        try {
+            window.sessionStorage.removeItem(OPEN_TRIED_KEY);
+        } catch (e) {
+            // Nothing was stored.
+        }
         show('installed');
     });
 
@@ -220,6 +257,14 @@
         });
     }
 
+    function openAlreadyTried () {
+        try {
+            return window.sessionStorage.getItem(OPEN_TRIED_KEY) === '1';
+        } catch (e) {
+            return false;
+        }
+    }
+
     // Up either way, once there has been a moment for the browser to speak.
     setTimeout(function () {
         if (deferredPrompt) {
@@ -229,7 +274,11 @@
             if (deferredPrompt) {
                 return;
             }
-            show(yes ? 'installed' : 'install');
+            if (!yes) {
+                show('install');
+            } else {
+                show(openAlreadyTried() ? 'find' : 'installed');
+            }
         });
     }, PROMPT_GRACE);
 }());

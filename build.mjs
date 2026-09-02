@@ -293,6 +293,14 @@ function writeWebManifest () {
         start_url: '/app/index.html',
         display: 'standalone',
         orientation: 'landscape',
+        // Lets a link click on the landing page hand off to the installed
+        // window instead of rendering the app in the tab. Chromium focuses an
+        // existing app window for an in-scope, user-initiated navigation; where
+        // link capturing is off it simply navigates, which the app's own guard
+        // turns back into a trip to the landing page.
+        launch_handler: {
+            client_mode: ['focus-existing', 'auto']
+        },
         // Lets a page ask navigator.getInstalledRelatedApps() whether this app
         // is already installed, so the landing page can offer to open it rather
         // than to install it again. Without this entry the call always returns
