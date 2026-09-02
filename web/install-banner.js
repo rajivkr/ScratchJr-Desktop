@@ -1,21 +1,25 @@
 /*
  * The install bar on the landing page.
  *
- * The bar is up for every reader who has not already installed ScratchJr, and
- * it always has a button. Which button depends on what the browser will let
- * this page do:
+ * The bar is up for every reader, and says one of three things:
  *
- *   Install App     the browser fired beforeinstallprompt, so pressing it
- *                   opens the browser's own install dialog. The usual case.
- *   Open ScratchJr  it did not, so pressing it opens the app in this tab.
+ *   Install App        the browser fired beforeinstallprompt, so pressing it
+ *                      opens the browser's own install dialog.
+ *   Add to Home Screen an iPad, where Safari has no such event and the Share
+ *                      sheet is the only route.
+ *   Already installed  no event, on a browser that has one. The overwhelming
+ *                      reason a browser does not offer an install is that the
+ *                      app is already there -- it will not offer twice -- so
+ *                      the bar says so and says where to find it.
  *
- * Waiting for beforeinstallprompt before showing anything was the last version
- * and it was wrong. Chromium mutes its own install offer on an origin for a
- * fortnight after showing it once, so on any machine that had already been
- * asked -- every machine this was developed on, and every parent who pressed
- * Cancel once -- the page had no bar at all and no way to reach ScratchJr.
- * There is no API that installs without that event, so the honest second
- * button opens the app rather than pretending or explaining.
+ * The version before this one guessed the other way and offered to open the
+ * app in the tab. It was reported from a machine with ScratchJr.app sitting in
+ * Brave Browser Apps: the browser was silent because the app was installed,
+ * and pressing Open produced a web page instead of the app. Opening in a tab
+ * is gone with it, so nothing here can start ScratchJr in a browser again.
+ *
+ * There is no API to launch an installed app from a page, so 'open it' is a
+ * sentence about their own device rather than a button that lies.
  *
  * The markup and every style live in the landing page itself. The bar and the
  * button are display:none in CSS until this file reveals them, and a media
@@ -31,17 +35,17 @@
     'use strict';
 
     var DISMISSED_KEY = 'scratchjr-install-dismissed';
-    var OPEN_KEY = 'scratchjr-open-in-browser';
     var APP_URL = '/app/index.html';
 
-    // How long to give beforeinstallprompt before showing Open instead. The
-    // event lands as soon as the manifest and icons are read, so this is only
-    // long enough to avoid the button changing under a reader's finger.
+    // How long to give beforeinstallprompt before concluding it is not coming.
+    // The event lands as soon as the manifest and icons are read, so this is
+    // only long enough to keep the bar from changing under a reader's finger.
     var PROMPT_GRACE = 1500;
 
     var bar = document.getElementById('pwa-install-bar');
     var button = document.getElementById('pwa-install-btn');
     var steps = document.getElementById('pwa-install-ios');
+    var installed = document.getElementById('pwa-installed');
     var later = document.getElementById('pwa-install-later');
 
     var deferredPrompt = null;
@@ -102,29 +106,30 @@
         }
     }
 
+    var title = document.getElementById('pwa-title');
     var sub = bar.querySelector('.pwa-sub');
 
-    /** mode: 'install' (a real prompt in hand), 'open', or 'ios'. */
+    /** mode: 'install' (a real prompt in hand), 'ios', or 'installed'. */
     function show (mode) {
         bar.style.display = 'block';
         document.body.classList.add('pwa-bar-open');
 
-        if (mode === 'ios') {
-            steps.style.display = 'block';
-            button.style.display = 'none';
-            sub.textContent = 'Add it to your Home Screen to get the app.';
-            return;
-        }
-
-        steps.style.display = 'none';
-        button.style.display = 'block';
+        button.style.display = mode === 'install' ? 'block' : 'none';
+        steps.style.display = mode === 'ios' ? 'block' : 'none';
+        installed.style.display = mode === 'installed' ? 'block' : 'none';
 
         if (mode === 'install') {
-            button.textContent = 'Install App';
+            title.textContent = 'Install ScratchJr';
             sub.textContent = 'Get the app on this device. Works without internet.';
+            later.textContent = 'Not now';
+        } else if (mode === 'ios') {
+            title.textContent = 'Install ScratchJr';
+            sub.textContent = 'Add it to your Home Screen to get the app.';
+            later.textContent = 'Got it';
         } else {
-            button.textContent = 'Open ScratchJr';
-            sub.textContent = 'Open it here, or install it from your browser for an icon of its own.';
+            title.textContent = 'ScratchJr is already installed';
+            sub.textContent = 'It is on this device, in its own window.';
+            later.textContent = 'Got it';
         }
     }
 
@@ -132,6 +137,7 @@
         bar.style.display = 'none';
         button.style.display = 'none';
         steps.style.display = 'none';
+        installed.style.display = 'none';
         document.body.classList.remove('pwa-bar-open');
     }
 
@@ -148,31 +154,27 @@
         show('install');
     });
 
+    // The button is only ever on screen with a prompt in hand.
     button.addEventListener('click', function () {
-        if (deferredPrompt) {
-            deferredPrompt.prompt();
-            deferredPrompt.userChoice.then(function () {
-                deferredPrompt = null;
-                hide();
-            });
+        if (!deferredPrompt) {
             return;
         }
-
-        // Nothing to install with. Open ScratchJr instead -- the flag is what
-        // stops the app bouncing this tab back here.
-        try {
-            window.sessionStorage.setItem(OPEN_KEY, '1');
-        } catch (e) {
-            // Storage is off; the query string carries it instead.
-        }
-        window.location.href = APP_URL + '?open';
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(function (choice) {
+            deferredPrompt = null;
+            if (choice.outcome === 'accepted') {
+                show('installed');
+            } else {
+                hide();
+            }
+        });
     });
 
     // Covers an install started from the browser's own address bar, which
     // never goes through the button.
     window.addEventListener('appinstalled', function () {
         deferredPrompt = null;
-        hide();
+        show('installed');
     });
 
     later.addEventListener('click', function () {
@@ -192,11 +194,11 @@
         return;
     }
 
-    // Up either way. If the offer has not arrived by now it is not coming on
-    // this visit, so put Open there rather than nothing.
+    // Up either way. A browser that has an install offer to make has made it
+    // by now; silence means the app is already here.
     setTimeout(function () {
         if (!deferredPrompt) {
-            show('open');
+            show('installed');
         }
     }, PROMPT_GRACE);
 }());

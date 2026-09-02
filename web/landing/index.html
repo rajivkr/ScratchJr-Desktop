@@ -53,7 +53,8 @@
         */
        #pwa-install-bar,
        #pwa-install-btn,
-       #pwa-install-ios {
+       #pwa-install-ios,
+       #pwa-installed {
         display: none;
        }
 
@@ -363,7 +364,7 @@ Finally, a special thank you to <a href="https://www.scopeiteducation.edu.au/">S
     <div class="pwa-head">
       <div class="pwa-tile"><img src="/icons/icon-256.png" alt=""></div>
       <div>
-        <div class="pwa-title">Install ScratchJr</div>
+        <div class="pwa-title" id="pwa-title">Install ScratchJr</div>
         <div class="pwa-sub">Get the app on this device. Works without internet.</div>
       </div>
     </div>
@@ -371,6 +372,9 @@ Finally, a special thank you to <a href="https://www.scopeiteducation.edu.au/">S
       1. Tap the <b>Share</b> button <span style="font-size:16px">&#x2934;</span><br>
       2. Scroll down and tap <b>Add to Home Screen</b><br>
       3. Tap <b>Add</b> in the top right
+    </div>
+    <div id="pwa-installed" class="pwa-steps">
+      Search your device for <b>ScratchJr</b> and open it from there.
     </div>
     <button type="button" id="pwa-install-btn">Install App</button>
     <button type="button" id="pwa-install-later">Not now</button>

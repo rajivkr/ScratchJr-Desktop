@@ -17,10 +17,6 @@
 
 const LANDING_URL = '/';
 
-// Set by the landing page's Open button, and by ?open in case storage is
-// unavailable. See askedToOpenInBrowser().
-const OPEN_KEY = 'scratchjr-open-in-browser';
-
 /*
  * Deliberately not display-mode: fullscreen. A browser window put into
  * fullscreen reports it, so testing for it handed anyone an F11-sized hole
@@ -48,38 +44,19 @@ function isDevHost () {
 }
 
 /**
- * The reader pressed Open on the landing page.
- *
- * That button only exists when the browser will not offer an install -- it has
- * shown its own offer on this origin recently and mutes it for a fortnight
- * afterwards, or it cannot install at all. Bouncing those people back to a
- * page whose only button sent them here is the loop this file was written to
- * end, and it left them with no way to reach ScratchJr at all.
- *
- * Kept in sessionStorage rather than the URL alone because the app navigates
- * between its own pages by relative name, and the permission has to survive
- * index.html -> home.html -> editor.html. It dies with the tab.
- */
-function askedToOpenInBrowser () {
-    const inUrl = /[?&]open\b/.test(window.location.search);
-    try {
-        if (inUrl) {
-            window.sessionStorage.setItem(OPEN_KEY, '1');
-            return true;
-        }
-        return window.sessionStorage.getItem(OPEN_KEY) === '1';
-    } catch (e) {
-        return inUrl;
-    }
-}
-
-/**
  * The one decision. Synchronous on purpose: entry.js has to know before the
  * load event whether to let ScratchJr start, and anything asynchronous here
  * would mean the app booting first and being torn down afterwards.
+ *
+ * There was briefly a third way in: a flag the landing page set when its Open
+ * button was pressed, for readers whose browser would not offer an install.
+ * It was reported straight away from a machine where ScratchJr was installed
+ * -- the browser was silent because of that, not because it could not install
+ * -- and pressing Open produced a web page rather than the app. The landing
+ * page says so instead now, and this has no exceptions again.
  */
 export function shouldRunApp () {
-    return isStandalone() || isDevHost() || askedToOpenInBrowser();
+    return isStandalone() || isDevHost();
 }
 
 /** Called only when shouldRunApp() said no. */
