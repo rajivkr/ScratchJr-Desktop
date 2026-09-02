@@ -25,11 +25,14 @@
  * sends it back here, and the flag set on the way out turns this into a line
  * about where to find the icon rather than the same button again.
  *
- * No press does nothing. A browser that has muted its own install offer will
- * not give this page a prompt, and nothing in a page can lift that -- so
- * Install falls back to dimming the page and pointing at the one control the
- * browser leaves working, the install icon in the address bar. The reader
- * pressed a button and got an answer; they are never left hunting.
+ * A browser that has muted its own install offer will not give this page a
+ * prompt, and nothing in a page can lift that. That state gets one line in the
+ * bar and nothing else. It briefly got an overlay pointing at the browser's
+ * install icon instead, which is the standard advice and was rejected outright:
+ * the reader is a parent who pressed a button, not somebody who is going to be
+ * sent hunting through browser chrome. The state is also vanishingly rare --
+ * on the machine where this was reported, three origins out of four hundred
+ * and forty-eight were muted.
  *
  * The markup and every style live in the landing page itself. The bar and the
  * button are display:none in CSS until this file reveals them, and a media
@@ -60,8 +63,7 @@
     var steps = document.getElementById('pwa-install-ios');
     var openLink = document.getElementById('pwa-open-btn');
     var installed = document.getElementById('pwa-installed');
-    var guide = document.getElementById('pwa-guide');
-    var guideText = document.getElementById('pwa-guide-text');
+
     var later = document.getElementById('pwa-install-later');
 
     var deferredPrompt = null;
@@ -159,81 +161,6 @@
         }
     }
 
-    /**
-     * Where this browser keeps the control that still installs, and what it is
-     * called there. The address bar for Chromium, the menu bar for Safari on a
-     * Mac; Firefox has neither and is told so plainly.
-     */
-    function guideForBrowser () {
-        var ua = window.navigator.userAgent;
-
-        if (/Firefox\//.test(ua)) {
-            return {
-                side: 'pwa-point-right',
-                html: 'Firefox cannot install apps. Open this page in ' +
-                    '<b>Chrome</b>, <b>Edge</b>, <b>Brave</b> or <b>Safari</b> ' +
-                    'and press Install there.'
-            };
-        }
-        if (/Safari/.test(ua) && !/Chrome|Chromium|Edg\//.test(ua)) {
-            return {
-                side: 'pwa-point-left',
-                html: 'In the menu bar at the top of your screen, choose ' +
-                    '<b>File</b>, then <b>Add to Dock</b>.'
-            };
-        }
-        return {
-            side: 'pwa-point-right',
-            html: 'Click the <b>install icon</b> at the right-hand end of the ' +
-                'address bar, just above, to add ScratchJr to this computer.'
-        };
-    }
-
-    /**
-     * The browser has muted its own install offer and no page can lift that.
-     * Point at the control it does leave working rather than leaving a press
-     * with nothing to show for it.
-     */
-    function showGuide () {
-        var where = guideForBrowser();
-        guideText.innerHTML = where.html;
-        guide.className = where.side;
-        guide.style.display = 'block';
-
-        var close = function () {
-            guide.style.display = 'none';
-            guide.removeEventListener('click', close);
-        };
-
-        // Attached late so the click that opened this does not also close it.
-        setTimeout(function () {
-            guide.addEventListener('click', close);
-        }, 0);
-        setTimeout(close, 8000);
-    }
-
-    function hide () {
-        bar.style.display = 'none';
-        button.style.display = 'none';
-        steps.style.display = 'none';
-        openLink.style.display = 'none';
-        installed.style.display = 'none';
-        document.body.classList.remove('pwa-bar-open');
-    }
-
-    if (dismissedThisSession()) {
-        return;
-    }
-
-    // Whenever the offer arrives -- before the grace period is up or long
-    // after it -- the button becomes Install.
-    window.addEventListener('beforeinstallprompt', function (event) {
-        // Suppress the browser's own mini-infobar; the bar asks properly.
-        event.preventDefault();
-        deferredPrompt = event;
-        show('install');
-    });
-
     // Not preventDefault()ed: the navigation is the whole point, and is what
     // Chromium may capture into the installed window.
     openLink.addEventListener('click', function () {
@@ -247,7 +174,11 @@
 
     button.addEventListener('click', function () {
         if (!deferredPrompt) {
-            showGuide();
+            // The browser has muted its own install offer on this origin and
+            // nothing in a page can lift that. Say so in one line, in the bar.
+            // No overlay, no arrow, and nothing about the browser's own chrome
+            // -- a parent should never be sent to hunt through it.
+            sub.textContent = 'Your browser is not offering the install right now.';
             return;
         }
         deferredPrompt.prompt();

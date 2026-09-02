@@ -55,8 +55,7 @@
        #pwa-install-btn,
        #pwa-open-btn,
        #pwa-install-ios,
-       #pwa-installed,
-       #pwa-guide {
+       #pwa-installed {
         display: none;
        }
 
@@ -82,60 +81,6 @@
        /* Room for the bar, added only while it is up. */
        body.pwa-bar-open {
         padding-bottom: 280px;
-       }
-
-       /*
-        * The guide.
-        *
-        * Shown when Install is pressed and the browser has muted its own
-        * offer, which no page can lift. Rather than a dead button or a
-        * paragraph to read, it dims the page and points at the one control
-        * still working: the install icon in the address bar.
-        */
-       #pwa-guide {
-        position: fixed;
-        inset: 0;
-        z-index: 100000;
-        background: rgba(0, 0, 0, .55);
-        animation: pwaFadeIn .2s ease;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-       }
-       #pwa-guide .pwa-guide-card {
-        position: absolute;
-        top: 14px;
-        width: 300px;
-        max-width: calc(100vw - 28px);
-        background: #fff;
-        color: #14314a;
-        border-radius: 14px;
-        padding: 16px 18px;
-        box-shadow: 0 12px 40px rgba(0, 0, 0, .45);
-        font-size: 14px;
-        line-height: 1.5;
-       }
-       #pwa-guide.pwa-point-right .pwa-guide-card { right: 14px; }
-       #pwa-guide.pwa-point-left .pwa-guide-card { left: 14px; }
-       #pwa-guide .pwa-arrow {
-        position: absolute;
-        top: -14px;
-        width: 0;
-        height: 0;
-        border-left: 13px solid transparent;
-        border-right: 13px solid transparent;
-        border-bottom: 15px solid #fff;
-       }
-       #pwa-guide.pwa-point-right .pwa-arrow { right: 26px; }
-       #pwa-guide.pwa-point-left .pwa-arrow { left: 26px; }
-       #pwa-guide b { color: #166E96; }
-       #pwa-guide .pwa-guide-dismiss {
-        margin-top: 12px;
-        font-size: 13px;
-        font-weight: 700;
-        color: #166E96;
-       }
-       @keyframes pwaFadeIn {
-        from { opacity: 0; }
-        to   { opacity: 1; }
        }
 
        @keyframes pwaSlideUp {
@@ -454,14 +399,6 @@ Finally, a special thank you to <a href="https://www.scopeiteducation.edu.au/">S
 
     <button type="button" id="pwa-install-btn">Install App</button>
     <button type="button" id="pwa-install-later">Not now</button>
-  </div>
-</div>
-
-<div id="pwa-guide" role="dialog" aria-label="How to install ScratchJr">
-  <div class="pwa-guide-card">
-    <div class="pwa-arrow"></div>
-    <div id="pwa-guide-text"></div>
-    <div class="pwa-guide-dismiss">Tap anywhere to close</div>
   </div>
 </div>
 
