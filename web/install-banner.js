@@ -1,17 +1,21 @@
 /*
- * The install banner on the landing page.
+ * The install bar on the landing page.
+ *
+ * The markup and every style live in the landing page itself; this file only
+ * decides what the browser will honour and reveals that much. Three things are
+ * true before a line of this runs:
+ *
+ *   - The bar, the button and the iPad steps are all display:none in CSS, so
+ *     nothing can flash while this is deciding.
+ *   - A media query hides the button outright inside an installed window, with
+ *     !important, so it beats any inline display set below. The JavaScript is
+ *     not the only thing standing between the installed app and this bar.
+ *   - This exits before attaching a single listener if it is already running
+ *     inside the installed app.
  *
  * Laid out after the install banner in Norven: fixed across the bottom in the
- * brand colour, the app's own icon on a white tile, and two full-width buttons
- * stacked so there is nothing to aim at. iPad Safari cannot be driven from
- * script, so it gets the three steps written out instead.
- *
- * It appears only when there is something to press. If the browser has not
- * offered an install -- because ScratchJr is already here, or because Chromium
- * mutes its own offer on an origin for a fortnight after showing it once --
- * the banner stays down and the page is just a page. A button that cannot
- * install, or one that says Open and comes back to where it started, is worse
- * than no button at all; an earlier version shipped both and they dead-ended.
+ * brand colour, the app's own icon on a white tile, two full-width buttons
+ * stacked so there is nothing to aim at.
  */
 
 (function () {
@@ -20,17 +24,52 @@
     var DISMISSED_KEY = 'scratchjr-install-dismissed';
     var APP_URL = '/app/index.html';
 
-    // ScratchJr's splash blue darkened enough to carry white text, so the bar
-    // reads as part of the app rather than bolted on.
-    var BRAND = '#166E96';
+    var bar = document.getElementById('pwa-install-bar');
+    var button = document.getElementById('pwa-install-btn');
+    var steps = document.getElementById('pwa-install-ios');
+    var later = document.getElementById('pwa-install-later');
 
     var deferredPrompt = null;
-    var shown = false;
 
-    function isStandalone () {
+    /*
+     * A window that must not be offered an install: the installed app, in any
+     * of the shapes it can take.
+     */
+    var isStandalone =
+        window.matchMedia('(display-mode: standalone)').matches ||
+        window.matchMedia('(display-mode: fullscreen)').matches ||
+        window.matchMedia('(display-mode: window-controls-overlay)').matches ||
+        window.navigator.standalone === true;
+
+    /*
+     * A window that really is the installed app -- which is a narrower thing.
+     *
+     * display-mode: fullscreen belongs in the test above, because the button
+     * must never appear in an installed window and an app launched fullscreen
+     * reports it. It cannot be used to decide a redirect: a plain browser
+     * window put into fullscreen reports it too. Measured on this machine --
+     * a normal Chrome tab in a macOS fullscreen window matches it.
+     *
+     * Redirecting on that sent a fullscreen browser to /app/, which is not
+     * standalone, so the app sent it back to the landing page, which sent it
+     * to /app/ again: a loop with no way out but leaving fullscreen. So the
+     * redirect asks only what an installed window can actually be.
+     */
+    function isInstalledWindow () {
         return window.matchMedia('(display-mode: standalone)').matches ||
             window.matchMedia('(display-mode: window-controls-overlay)').matches ||
             window.navigator.standalone === true;
+    }
+
+    // Standalone early exit. Checked before any listener is attached, so the
+    // installed app carries none of this.
+    if (isStandalone) {
+        // The installed app has no business on the landing page. If it lands
+        // here -- a bookmark, a shared link -- send it into ScratchJr.
+        if (isInstalledWindow()) {
+            window.location.replace(APP_URL);
+        }
+        return;
     }
 
     function isIOS () {
@@ -47,170 +86,66 @@
         }
     }
 
-    function rememberDismissal () {
-        try {
-            window.sessionStorage.setItem(DISMISSED_KEY, '1');
-        } catch (e) {
-            // Private browsing. The banner simply offers again next time.
-        }
+    function show (element) {
+        bar.style.display = 'block';
+        element.style.display = 'block';
+        document.body.classList.add('pwa-bar-open');
     }
 
-    var STYLES = [
-        '@keyframes sjrSlideUp {',
-        '  from { opacity: 0; transform: translateY(100%); }',
-        '  to   { opacity: 1; transform: translateY(0); }',
-        '}',
-        '#sjr-install {',
-        '  position: fixed; left: 0; right: 0; bottom: 0; z-index: 99999;',
-        '  background: ' + BRAND + ';',
-        '  box-shadow: 0 -4px 32px rgba(0, 0, 0, .32);',
-        '  animation: sjrSlideUp .3s ease;',
-        '  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;',
-        '}',
-        '#sjr-install.sjr-out { animation: sjrSlideUp .25s ease reverse forwards; }',
-        '#sjr-install .sjr-inner { max-width: 520px; margin: 0 auto; padding: 20px 20px 26px; }',
-        '#sjr-install .sjr-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }',
-        '#sjr-install .sjr-tile {',
-        '  width: 48px; height: 48px; border-radius: 12px; background: #fff; flex-shrink: 0;',
-        '  display: flex; align-items: center; justify-content: center; overflow: hidden;',
-        '}',
-        '#sjr-install .sjr-tile img { width: 40px; height: 40px; }',
-        '#sjr-install .sjr-title { font-size: 16px; font-weight: 700; color: #fff; line-height: 1.3; }',
-        '#sjr-install .sjr-sub { font-size: 12px; color: rgba(255, 255, 255, .75); line-height: 1.4; }',
-        '#sjr-install .sjr-steps {',
-        '  background: rgba(255, 255, 255, .12); border-radius: 12px; padding: 14px 16px;',
-        '  margin-bottom: 12px; font-size: 13px; color: #fff; line-height: 1.7;',
-        '}',
-        '#sjr-install button {',
-        '  width: 100%; display: block; border: none; border-radius: 12px; padding: 14px;',
-        '  font-family: inherit; font-size: 15px; cursor: pointer;',
-        '}',
-        '#sjr-install .sjr-go { background: #fff; color: ' + BRAND + '; font-weight: 700; margin-bottom: 10px; }',
-        '#sjr-install .sjr-go:hover { background: #f2f2f2; }',
-        '#sjr-install .sjr-later { background: rgba(255, 255, 255, .15); color: #fff; font-weight: 600; }',
-        '#sjr-install .sjr-later:hover { background: rgba(255, 255, 255, .24); }'
-    ].join('\n');
-
-    function render (mode) {
-        if (shown || document.getElementById('sjr-install')) {
-            return;
-        }
-        shown = true;
-
-        var style = document.createElement('style');
-        style.textContent = STYLES;
-        document.head.appendChild(style);
-
-        var bar = document.createElement('div');
-        bar.id = 'sjr-install';
-        bar.setAttribute('role', 'dialog');
-        bar.setAttribute('aria-label', 'Install ScratchJr');
-
-        var head =
-            '<div class="sjr-head">' +
-            '<div class="sjr-tile"><img src="/icons/icon-256.png" alt=""></div>' +
-            '<div>' +
-            '<div class="sjr-title">Install ScratchJr</div>' +
-            '<div class="sjr-sub">Get the app on this device. Works without internet.</div>' +
-            '</div></div>';
-
-        var action = (mode === 'ios')
-            ? '<div class="sjr-steps">' +
-              '1. Tap the <b>Share</b> button <span style="font-size:16px">&#x2934;</span><br>' +
-              '2. Scroll down and tap <b>Add to Home Screen</b><br>' +
-              '3. Tap <b>Add</b> in the top right' +
-              '</div>'
-            : '<button type="button" class="sjr-go" data-action="install">Install App</button>';
-
-        bar.innerHTML = '<div class="sjr-inner">' + head + action +
-            '<button type="button" class="sjr-later" data-action="later">' +
-            (mode === 'ios' ? 'Got it' : 'Not now') +
-            '</button></div>';
-
-        document.body.appendChild(bar);
-
-        bar.addEventListener('click', function (event) {
-            var target = event.target.closest && event.target.closest('[data-action]');
-            if (!target) {
-                return;
-            }
-            if (target.getAttribute('data-action') === 'install') {
-                runInstall();
-            } else {
-                rememberDismissal();
-                dismiss();
-            }
-        });
+    function hide () {
+        bar.style.display = 'none';
+        button.style.display = 'none';
+        steps.style.display = 'none';
+        document.body.classList.remove('pwa-bar-open');
     }
 
-    function dismiss () {
-        var bar = document.getElementById('sjr-install');
-        if (!bar) {
-            return;
-        }
-        bar.classList.add('sjr-out');
-        setTimeout(function () {
-            bar.remove();
-        }, 260);
+    if (dismissedThisSession()) {
+        return;
     }
 
-    function runInstall () {
+    // The one thing that reveals the button. Nothing else does.
+    window.addEventListener('beforeinstallprompt', function (event) {
+        // Suppress the browser's own mini-infobar; the bar asks properly.
+        event.preventDefault();
+        deferredPrompt = event;
+        show(button);
+    });
+
+    button.addEventListener('click', function () {
         if (!deferredPrompt) {
             return;
         }
-        var prompt = deferredPrompt;
-        deferredPrompt = null;
-        prompt.prompt();
-        prompt.userChoice.then(function (choice) {
-            if (choice.outcome === 'accepted') {
-                dismiss();
-            } else {
-                // Declined. Leave the banner up; they may change their mind.
-                deferredPrompt = prompt;
-            }
-        });
-    }
-
-    function start () {
-        // The installed app has no business on the landing page. If it lands
-        // here -- a bookmark, a shared link -- send it into ScratchJr.
-        if (isStandalone()) {
-            window.location.replace(APP_URL);
-            return;
-        }
-
-        if (dismissedThisSession()) {
-            return;
-        }
-
-        window.addEventListener('beforeinstallprompt', function (event) {
-            // Suppress the browser's own mini-infobar; this asks properly.
-            event.preventDefault();
-            deferredPrompt = event;
-            setTimeout(function () {
-                render('install');
-            }, 1200);
-        });
-
-        window.addEventListener('appinstalled', function () {
+        deferredPrompt.prompt();
+        deferredPrompt.userChoice.then(function () {
             deferredPrompt = null;
-            dismiss();
+            hide();
         });
+    });
 
-        if (isIOS()) {
-            // Safari never fires beforeinstallprompt, so there is nothing to
-            // wait for and the steps are the only route.
-            setTimeout(function () {
-                if (!deferredPrompt) {
-                    render('ios');
-                }
-            }, 2000);
+    // Covers an install started from the browser's own address bar, which
+    // never goes through the button.
+    window.addEventListener('appinstalled', function () {
+        deferredPrompt = null;
+        hide();
+    });
+
+    later.addEventListener('click', function () {
+        try {
+            window.sessionStorage.setItem(DISMISSED_KEY, '1');
+        } catch (e) {
+            // Private browsing. The bar simply offers again next time.
         }
-    }
+        hide();
+    });
 
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', start, {once: true});
-    } else {
-        start();
+    // Safari fires no beforeinstallprompt and never will, so the iPad -- the
+    // device ScratchJr was written for -- would otherwise have no way in at
+    // all. It gets the Share sheet steps in place of the button.
+    if (isIOS()) {
+        setTimeout(function () {
+            if (!deferredPrompt) {
+                show(steps);
+            }
+        }, 2000);
     }
 }());
