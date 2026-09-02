@@ -3,20 +3,20 @@
  *
  * The bar is up for every reader, and says one of three things:
  *
- *   Install App        the browser fired beforeinstallprompt, so pressing it
- *                      opens the browser's own install dialog.
- *   Add to Home Screen an iPad, where Safari has no such event and the Share
- *                      sheet is the only route.
- *   Already installed  no event, on a browser that has one. The overwhelming
- *                      reason a browser does not offer an install is that the
- *                      app is already there -- it will not offer twice -- so
- *                      the bar says so and says where to find it.
+ *   Install App        the default. Pressing it opens the browser's own
+ *                      install dialog.
+ *   Add to Home Screen an iPad, where Safari has no installable event and the
+ *                      Share sheet is the only route.
+ *   Already installed  only on proof -- getInstalledRelatedApps() naming this
+ *                      app. Then there is nothing to install and the bar says
+ *                      where to find it instead.
  *
- * The version before this one guessed the other way and offered to open the
- * app in the tab. It was reported from a machine with ScratchJr.app sitting in
- * Brave Browser Apps: the browser was silent because the app was installed,
- * and pressing Open produced a web page instead of the app. Opening in a tab
- * is gone with it, so nothing here can start ScratchJr in a browser again.
+ * Proof, not inference. A browser goes quiet for two different reasons: the
+ * app is already installed, or it made its own install offer here recently and
+ * mutes itself for a fortnight afterwards. The version before this one read
+ * every silence as the first and told somebody who had just uninstalled the
+ * app to go and search for it. So silence alone now decides nothing: without
+ * proof the bar offers the install, which is what a first-time reader needs.
  *
  * There is no API to launch an installed app from a page, so 'open it' is a
  * sentence about their own device rather than a button that lies.
@@ -46,6 +46,7 @@
     var button = document.getElementById('pwa-install-btn');
     var steps = document.getElementById('pwa-install-ios');
     var installed = document.getElementById('pwa-installed');
+    var unavailable = document.getElementById('pwa-unavailable');
     var later = document.getElementById('pwa-install-later');
 
     var deferredPrompt = null;
@@ -109,7 +110,7 @@
     var title = document.getElementById('pwa-title');
     var sub = bar.querySelector('.pwa-sub');
 
-    /** mode: 'install' (a real prompt in hand), 'ios', or 'installed'. */
+    /** mode: 'install', 'ios', 'installed' (proven), or 'unavailable'. */
     function show (mode) {
         bar.style.display = 'block';
         document.body.classList.add('pwa-bar-open');
@@ -117,6 +118,7 @@
         button.style.display = mode === 'install' ? 'block' : 'none';
         steps.style.display = mode === 'ios' ? 'block' : 'none';
         installed.style.display = mode === 'installed' ? 'block' : 'none';
+        unavailable.style.display = mode === 'unavailable' ? 'block' : 'none';
 
         if (mode === 'install') {
             title.textContent = 'Install ScratchJr';
@@ -126,9 +128,13 @@
             title.textContent = 'Install ScratchJr';
             sub.textContent = 'Add it to your Home Screen to get the app.';
             later.textContent = 'Got it';
-        } else {
+        } else if (mode === 'installed') {
             title.textContent = 'ScratchJr is already installed';
             sub.textContent = 'It is on this device, in its own window.';
+            later.textContent = 'Got it';
+        } else {
+            title.textContent = 'Install ScratchJr';
+            sub.textContent = 'This browser is not offering it at the moment.';
             later.textContent = 'Got it';
         }
     }
@@ -138,6 +144,7 @@
         button.style.display = 'none';
         steps.style.display = 'none';
         installed.style.display = 'none';
+        unavailable.style.display = 'none';
         document.body.classList.remove('pwa-bar-open');
     }
 
@@ -154,9 +161,11 @@
         show('install');
     });
 
-    // The button is only ever on screen with a prompt in hand.
     button.addEventListener('click', function () {
         if (!deferredPrompt) {
+            // The browser has muted its own offer here. Nothing on this page
+            // can lift that, and saying so beats a button that does nothing.
+            show('unavailable');
             return;
         }
         deferredPrompt.prompt();
@@ -194,11 +203,33 @@
         return;
     }
 
-    // Up either way. A browser that has an install offer to make has made it
-    // by now; silence means the app is already here.
-    setTimeout(function () {
-        if (!deferredPrompt) {
-            show('installed');
+    /**
+     * Positive proof only: the browser naming this app as one it has already
+     * installed. An empty answer, or no answer at all, proves nothing and is
+     * treated as not installed -- the reader gets the install offer, which is
+     * the harmless way to be wrong.
+     */
+    function provenInstalled () {
+        if (!navigator.getInstalledRelatedApps) {
+            return Promise.resolve(false);
         }
+        return navigator.getInstalledRelatedApps().then(function (apps) {
+            return Array.isArray(apps) && apps.length > 0;
+        }).catch(function () {
+            return false;
+        });
+    }
+
+    // Up either way, once there has been a moment for the browser to speak.
+    setTimeout(function () {
+        if (deferredPrompt) {
+            return;
+        }
+        provenInstalled().then(function (yes) {
+            if (deferredPrompt) {
+                return;
+            }
+            show(yes ? 'installed' : 'install');
+        });
     }, PROMPT_GRACE);
 }());
