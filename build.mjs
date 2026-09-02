@@ -247,7 +247,10 @@ function writeStyleBundle () {
 // lied about it -- and Chrome, which checks the real dimensions, rejected the
 // icons and refused to treat the site as installable. No install prompt ever
 // appeared in production while it worked perfectly on a Mac.
-const ICON_SIZES = [128, 256, 512, 1024];
+// 192 is here because Chromium's install criteria name it specifically, and
+// because every manifest that installs without argument carries one. Ours went
+// 128 -> 256 and skipped it.
+const ICON_SIZES = [128, 192, 256, 512, 1024];
 
 /** Read a PNG's real dimensions from its IHDR chunk. */
 function pngSize (file) {
