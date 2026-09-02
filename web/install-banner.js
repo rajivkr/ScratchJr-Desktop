@@ -47,26 +47,41 @@
     var deferredPrompt = null;
 
     /*
-     * Is this the installed app?
+     * Installed app, or fullscreen browser? They are not the same question and
+     * one media query cannot answer both.
      *
-     * Deliberately not display-mode: fullscreen. A plain browser window put
-     * into macOS fullscreen matches it -- measured twice on this machine, and
-     * both times it took the bar away from an ordinary reader who had done
-     * nothing but fill their screen. It protects against nothing here either:
-     * the manifest asks for display: standalone, so an installed ScratchJr
-     * window reports standalone, never fullscreen. Standalone, the
-     * window-controls-overlay variant of it, and Safari's own flag are the
-     * whole of what an installed copy can be.
+     * isPWA is the whole of what an installed copy can be: the manifest asks
+     * for display: standalone, so an installed ScratchJr window reports
+     * standalone -- or the window-controls-overlay variant of it, or Safari's
+     * own flag. It never reports fullscreen.
+     *
+     * isFullscreen is a browser filling the screen, which is nobody's business
+     * but the reader's. Only isPWA is allowed to take the bar away. Testing
+     * fullscreen for that was measured twice on this machine and both times it
+     * left an ordinary reader with no button and no explanation.
      */
-    function isInstalledWindow () {
-        return window.matchMedia('(display-mode: standalone)').matches ||
+    function getDisplayState () {
+        var isPWA =
+            window.matchMedia('(display-mode: standalone)').matches ||
             window.matchMedia('(display-mode: window-controls-overlay)').matches ||
             window.navigator.standalone === true;
+
+        var isFullscreen = Boolean(
+            document.fullscreenElement ||
+            document.webkitFullscreenElement ||
+            window.matchMedia('(display-mode: fullscreen)').matches
+        );
+
+        return {
+            isPWA: isPWA,
+            isFullscreen: isFullscreen,
+            isNormalBrowser: !isPWA && !isFullscreen
+        };
     }
 
     // Early exit, before a single listener is attached, so the installed app
     // carries none of this.
-    if (isInstalledWindow()) {
+    if (getDisplayState().isPWA) {
         // The installed app has no business on the landing page. If it lands
         // here -- a bookmark, a shared link -- send it into ScratchJr.
         window.location.replace(APP_URL);
