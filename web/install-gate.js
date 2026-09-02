@@ -5,26 +5,29 @@
  * the app and offers exactly one thing to do: install it. The app itself only
  * starts once it is running in its own window.
  *
- * Two rules drive everything here:
+ * Three rules drive everything here:
  *
  *   1. A browser tab never runs ScratchJr. shouldRunApp() is the only place
  *      that decides, it is synchronous, and entry.js calls it before handing
  *      over to the app.
  *   2. An installed copy never sees this page. The installed app passes the
  *      gate outright; a browser tab on a device that already has the app is
- *      told where to find it instead of being asked to install it again.
+ *      offered the app instead of being asked to install it again.
+ *   3. The card offers a button -- Install, or Open -- and never a procedure.
+ *      The reader is a parent who wants ScratchJr for their child, not
+ *      somebody who is going to hunt through a browser menu. The one exception
+ *      is the iPad, where Add to Home Screen is the only route Safari has and
+ *      the Share button is the route every iPad owner already knows.
  */
 
 const INSTALLED_KEY = 'scratchjr-installed';
 
+// The manifest's start_url. Navigating here is what Open does.
+const START_URL = '/index.html';
+
 // ScratchJr's splash blue, and that colour darkened enough to carry white text.
 const SPLASH = '#35A8E0';
 const BRAND = '#166E96';
-
-// How long to wait for Chrome/Edge to offer an install before falling back to
-// telling the reader how to do it by hand. The event normally arrives as soon
-// as the service worker takes control.
-const PROMPT_GRACE = 3000;
 
 let deferredPrompt = null;
 
@@ -107,24 +110,17 @@ function homeOfApps () {
     return 'in your list of apps';
 }
 
-/** How to install by hand, when the browser will not be driven from script. */
-function manualSteps () {
-    const ua = window.navigator.userAgent;
-
-    if (isIOS()) {
-        return '1. Tap the <b>Share</b> button <span style="font-size:16px">&#x2934;</span><br>' +
-            '2. Scroll down and tap <b>Add to Home Screen</b><br>' +
-            '3. Tap <b>Add</b> in the top right';
-    }
-    if (/Firefox\//.test(ua)) {
-        return 'Firefox cannot install apps. Open this page in <b>Chrome</b>, ' +
-            '<b>Edge</b> or <b>Safari</b> and install it there.';
-    }
-    if (/Safari/.test(ua) && !/Chrome|Chromium|Edg\//.test(ua)) {
-        return 'In the menu bar, choose <b>File</b>, then <b>Add to Dock</b>.';
-    }
-    return 'Open the browser menu and choose <b>Install ScratchJr</b>, or click the ' +
-        'install icon at the right-hand end of the address bar.';
+/**
+ * The iPad's three steps, and only the iPad's.
+ *
+ * Safari has no installable event to hang a button on, so this is the one
+ * place a procedure is unavoidable -- and it is the Share sheet, which is
+ * where an iPad owner already goes to do anything with a page.
+ */
+function iosSteps () {
+    return '1. Tap the <b>Share</b> button <span style="font-size:16px">&#x2934;</span><br>' +
+        '2. Scroll down and tap <b>Add to Home Screen</b><br>' +
+        '3. Tap <b>Add</b> in the top right';
 }
 
 const STYLES = `
@@ -197,6 +193,12 @@ const STYLES = `
     cursor: pointer;
 }
 #sjr-gate button:hover { background: #f2f2f2; }
+#sjr-gate .sjr-hint {
+    margin-top: 12px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: rgba(255, 255, 255, .78);
+}
 #sjr-gate .sjr-foot {
     margin-top: 16px;
     font-size: 12px;
@@ -223,28 +225,42 @@ function setBody (subtitle, action) {
 function showInstallButton () {
     setBody(
         'ScratchJr runs as an app on this device. Install it to start.',
-        '<button type="button" id="sjr-install">Install App</button>'
+        '<button type="button" data-action="install">Install App</button>'
     );
 }
 
-function showManualSteps () {
+function showIosSteps () {
     setBody(
-        'ScratchJr runs as an app on this device. Here is how to install it.',
-        '<div class="sjr-steps">' + manualSteps() + '</div>'
+        'Add ScratchJr to your Home Screen to start.',
+        '<div class="sjr-steps">' + iosSteps() + '</div>'
     );
 }
 
-/** Requirement two: an installed device is never asked to install again. */
-function showAlreadyInstalled () {
+/**
+ * Requirement two, and the other half of the two-button rule: a device that
+ * already has ScratchJr is offered the app, never asked to install it twice.
+ *
+ * Open navigates to the app's start URL. An installed app that is set to open
+ * its own links -- which is how Chrome, Edge and Safari install them -- takes
+ * the navigation and opens its window. Where it does not, the reader lands
+ * back here and the line under the button says where to find the icon, which
+ * is a sentence about their own computer rather than about a browser menu.
+ */
+function showOpenButton (subtitle) {
     setBody(
-        'ScratchJr is installed on this device.',
-        '<div class="sjr-steps">Open ScratchJr ' + homeOfApps() + '.</div>'
+        subtitle,
+        '<button type="button" data-action="open">Open ScratchJr</button>' +
+        '<div class="sjr-hint">You will also find ScratchJr ' + homeOfApps() + '.</div>'
     );
 }
 
 async function runInstall () {
     if (!deferredPrompt) {
-        showManualSteps();
+        // No prompt to offer. Either ScratchJr is already here, or this
+        // browser has asked recently and will not ask again for a while --
+        // Chromium mutes the offer for a fortnight once it has been shown.
+        // Both end the same way: the app exists, so offer to open it.
+        showOpenButton('ScratchJr is already on this device.');
         return;
     }
 
@@ -255,7 +271,7 @@ async function runInstall () {
     const choice = await prompt.userChoice;
     if (choice.outcome === 'accepted') {
         writeFlag(INSTALLED_KEY);
-        showAlreadyInstalled();
+        showOpenButton('ScratchJr is installed.');
     } else {
         // Declined. The only way on is still to install, so ask again.
         deferredPrompt = prompt;
@@ -304,8 +320,11 @@ function render () {
     document.body.appendChild(gate);
 
     gate.addEventListener('click', (event) => {
-        if (event.target.id === 'sjr-install') {
+        const action = event.target.getAttribute && event.target.getAttribute('data-action');
+        if (action === 'install') {
             runInstall();
+        } else if (action === 'open') {
+            window.location.href = START_URL;
         }
     });
 
@@ -352,33 +371,32 @@ export default function mountInstallGate () {
     window.addEventListener('appinstalled', () => {
         deferredPrompt = null;
         writeFlag(INSTALLED_KEY);
-        showAlreadyInstalled();
+        showOpenButton('ScratchJr is installed.');
     });
 
     whenBodyExists(() => {
         render();
 
-        alreadyInstalled().then((installed) => {
-            if (installed) {
-                showAlreadyInstalled();
-                return;
-            }
-
-            if (isIOS()) {
-                // Safari never fires beforeinstallprompt; there is nothing to
-                // wait for and nothing to press.
-                showManualSteps();
-                return;
-            }
-
+        // Install is the offer from the first paint, and it stays the offer.
+        //
+        // An earlier version put this button up and swapped it for written
+        // instructions if beforeinstallprompt had not arrived in three
+        // seconds. That was wrong twice over: three seconds is not long
+        // enough for the event on a cold connection, and a browser that has
+        // shown its install offer once mutes the event for a fortnight
+        // afterwards -- so the machines it degraded on were the ones that had
+        // already seen the offer, and what it degraded to was a paragraph
+        // about browser menus. Pressing the button now sorts it out instead.
+        if (isIOS()) {
+            showIosSteps();
+        } else {
             showInstallButton();
+        }
 
-            // A button that cannot do anything is worse than instructions.
-            setTimeout(() => {
-                if (!deferredPrompt && document.getElementById('sjr-install')) {
-                    showManualSteps();
-                }
-            }, PROMPT_GRACE);
+        alreadyInstalled().then((installed) => {
+            if (installed && !deferredPrompt) {
+                showOpenButton('ScratchJr is already on this device.');
+            }
         });
     });
 }
