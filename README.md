@@ -4,8 +4,9 @@ Scratch and ScratchJr are trademarks of Massachusetts Institute of Technology, w
 ## Install
 Visit the site and press Install. Works on Mac, Windows, iPad and Android.
 
-ScratchJr only runs as an installed app. A browser tab shows the install screen
-and nothing else; the app itself starts only in its own window.
+ScratchJr only runs as an installed app. A browser gets the landing page, with
+the install offer across the bottom of it; the app itself starts only in its
+own window. A browser tab that reaches an app URL is sent to the landing page.
 
 
 ## The geeky stuff
@@ -33,8 +34,8 @@ of that same contract, backed only by browser APIs.
 * `web/db.js` holds the project database in memory with sql.js and mirrors it to IndexedDB.
 * `web/audio.js` and `web/camera.js` handle sound recording and the paint editor's camera.
 * `web/sw.js` precaches the whole app so it runs with no internet connection.
-* `web/install-gate.js` stands in front of the app in a browser tab and offers the install.
-* `web/landing/` is the page people install from.
+* `web/standalone-only.js` decides whether this window may run the app, and redirects it if not.
+* `web/landing/` and `web/install-banner.js` are the page people install from.
 
 Three files in the original ScratchJr source were touched, all in the platform layer:
 `iPad/iOS.js` (resources resolve asynchronously so they can come from the offline
@@ -59,8 +60,9 @@ Requires Node.js.
     npm run build      # writes dist/
     npm run dev        # build, watch, and serve on http://localhost:4173
 
-`dist/` is a static directory: the app at the root, the landing page at
-`/about.html`. Deploying is a matter of serving it. `vercel.json` configures a
+`dist/` is a static directory: the landing page at the root, the app under
+`/app/`, and the manifest, service worker and icons at the root so their scope
+covers both. Deploying is a matter of serving it. `vercel.json` configures a
 Vercel deployment.
 
 
@@ -68,10 +70,17 @@ Vercel deployment.
 
     npm run dev
 
-Then open http://localhost:4173 and use the browser's developer tools. localhost
-is the one place the app runs in a tab without being installed, so development
-does not mean reinstalling after every change. Add `?gate` to the URL to see the
-install screen a real visitor gets.
+Then open http://localhost:4173 and use the browser's developer tools. The
+landing page is at `/`, the app at `/app/index.html`. localhost is the one
+place the app runs in a tab without being installed, so development does not
+mean reinstalling after every change; add `?landing` to an app URL to take a
+visitor's route instead.
+
+Note that a browser mutes its own install offer on an origin for about a
+fortnight after showing it once, which includes localhost and includes any
+origin this has been tested on. If the banner does not appear, that is usually
+why: clear the site's data in the browser's site settings, or use a fresh
+profile.
 
 To test offline behaviour, load the app once so the service worker precaches it,
 then stop the dev server and reload.

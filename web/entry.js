@@ -10,14 +10,15 @@
  * start-up is asynchronous, which is fine: ScratchJr's iOS.waitForInterface()
  * polls for window.tablet, so the app starts the moment the database is ready.
  *
- * That same ordering is what makes the install gate possible. In a browser tab
- * ScratchJr is not started at all: window.onload is taken back off appEntry
- * before the load event fires, and window.tablet is never published, so nothing
- * downstream of it can run either. Only the installed app gets past this file.
+ * That same ordering is what keeps ScratchJr out of a browser tab. In a tab it
+ * is not started at all: window.onload is taken back off appEntry before the
+ * load event fires, and window.tablet is never published, so nothing
+ * downstream of it can run either. Only the installed app gets past this file;
+ * a tab is sent to the landing page.
  */
 
 import WebTabletInterface, {setSoundManifest} from './tablet.js';
-import mountInstallGate, {shouldRunApp} from './install-gate.js';
+import sendToLanding, {shouldRunApp} from './standalone-only.js';
 import * as DB from './db.js';
 
 import {setPreloadedStyles} from '../src/app/src/utils/lib.js';
@@ -59,11 +60,9 @@ function registerServiceWorker () {
     });
 }
 
-// The service worker is registered either way: in a tab it is what makes the
-// browser willing to install the app in the first place.
-registerServiceWorker();
-
 if (shouldRunApp()) {
+    // The service worker is what makes the app work offline once installed.
+    registerServiceWorker();
     boot().catch((e) => {
         console.log('ScratchJr failed to start', e); // eslint-disable-line no-console
     });
@@ -71,5 +70,5 @@ if (shouldRunApp()) {
     // appEntry.js claimed window.onload when it was imported above. Give it
     // back before the load event fires: ScratchJr must not start in a tab.
     window.onload = null;
-    mountInstallGate();
+    sendToLanding();
 }

@@ -1,19 +1,20 @@
 /*
  * Build the ScratchJr PWA.
  *
- *   dist/                ScratchJr itself, plus the manifest, service worker
- *                        and icons. The app is the site.
- *   dist/about.html      What this is, and the MIT trademark notice.
+ *   dist/index.html      The landing page: what this is, the MIT trademark
+ *                        notice, and the install banner across the bottom.
+ *   dist/app/            ScratchJr itself.
+ *   dist/                The manifest, service worker and icons, at the root
+ *                        so their scope covers both.
  *
- * ScratchJr sits at the root deliberately. The installed app's scope is the
- * whole origin, so anything inside that scope can end up rendered in the app
- * window. Putting a separate landing page in there meant the app could open on
- * it, which took a redirect in the head to paper over. With the app at the
- * root there is nothing else for it to land on.
+ * The two live at different paths because they are for different readers. A
+ * browser gets the landing page and an offer to install; the installed app
+ * starts at /app/index.html and never sees the landing page. Each bounces to
+ * the other if it ends up in the wrong window, so neither can strand anyone.
  *
- * The app's pages are served to browsers as well as to the installed app, but
- * only the installed app runs them: web/install-gate.js stops ScratchJr from
- * starting in a tab and offers the install instead.
+ * The app keeps its own directory because its pages navigate to each other by
+ * relative name -- home.js and Lobby.js both go to 'index.html' -- so the
+ * splash has to keep that filename, and the landing page wants the root.
  *
  * The app's HTML is copied with only its two <script> tags rewritten: the
  * Electron client and the raw ES-module entry point are replaced by one bundle.
@@ -29,7 +30,7 @@ import {fileURLToPath} from 'node:url';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dist = path.join(root, 'dist');
-const appDist = dist;
+const appDist = path.join(dist, 'app');
 const appSrc = path.join(root, 'src', 'app');
 
 // Absolute origin the site is served from. Needed for related_applications,
@@ -132,8 +133,9 @@ function copyAppAssets () {
 }
 
 function copyLandingAssets () {
-    // Reachable, but not in anybody's way: the app owns the front door.
-    fs.copyFileSync(path.join(root, 'web', 'landing', 'index.html'), path.join(dist, 'about.html'));
+    // The front door. A browser that asks for anything else ends up here.
+    fs.copyFileSync(path.join(root, 'web', 'landing', 'index.html'), path.join(dist, 'index.html'));
+    fs.copyFileSync(path.join(root, 'web', 'install-banner.js'), path.join(dist, 'install-banner.js'));
     for (const file of ['pricing.css', 'scratchformac.png', 'scratchforwin.png']) {
         const from = path.join(root, 'docs', file);
         if (fs.existsSync(from)) {
@@ -288,7 +290,7 @@ function writeWebManifest () {
         // Scope covers the landing page so the browser can offer to install
         // from there; launching goes straight into the app.
         scope: '/',
-        start_url: '/index.html',
+        start_url: '/app/index.html',
         display: 'standalone',
         orientation: 'landscape',
         // Lets a page ask navigator.getInstalledRelatedApps() whether this app
@@ -326,16 +328,21 @@ function writeWebManifest () {
  * install must not wait on 34MB of artwork.
  */
 function isShell (file) {
-    return file.endsWith('.html') ||
-        file.endsWith('.js') ||
-        file.endsWith('.wasm') ||
-        file.endsWith('.webmanifest') ||
-        file.endsWith('.css') ||
-        file.startsWith('icons/') ||
-        file.startsWith('localizations/') ||
-        file === 'media.json' ||
-        file === 'settings.json' ||
-        file === 'sound-manifest.json';
+    // Tested without the app's directory prefix, so moving the app under
+    // /app/ does not quietly drop its locales and manifests out of the shell
+    // and leave a freshly installed copy fetching them on first run.
+    const within = file.startsWith('app/') ? file.slice(4) : file;
+
+    return within.endsWith('.html') ||
+        within.endsWith('.js') ||
+        within.endsWith('.wasm') ||
+        within.endsWith('.webmanifest') ||
+        within.endsWith('.css') ||
+        within.startsWith('icons/') ||
+        within.startsWith('localizations/') ||
+        within === 'media.json' ||
+        within === 'settings.json' ||
+        within === 'sound-manifest.json';
 }
 
 function writeServiceWorker () {

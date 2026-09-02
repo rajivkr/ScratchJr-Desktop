@@ -121,10 +121,12 @@ self.addEventListener('fetch', (event) => {
         try {
             return await cachePut(request, await fetch(request));
         } catch (e) {
-            // Offline and not cached: fall back to the splash screen, which
-            // is the app's own entry point.
+            // Offline and not cached: fall back to whichever front door this
+            // navigation was heading for -- the app's splash inside /app/,
+            // the landing page anywhere else.
             if (request.mode === 'navigate') {
-                const fallback = await caches.match('/index.html');
+                const home = url.pathname.startsWith('/app/') ? '/app/index.html' : '/index.html';
+                const fallback = await caches.match(home);
                 if (fallback) {
                     return fallback;
                 }
