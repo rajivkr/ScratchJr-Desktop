@@ -25,24 +25,59 @@
     var deferredPrompt = null;
 
     /*
-     * Is this the installed app?
+     * Is this the installed app's window?
      *
-     * Deliberately not display-mode: fullscreen. A plain browser window put
-     * into macOS fullscreen matches it, and testing for it took the bar away
-     * from readers who had done nothing but fill their screen. The manifest
-     * asks for display: standalone, so an installed window reports standalone
-     * and never fullscreen; nothing is lost by leaving it out.
+     * Not a question the display modes can answer on their own, which is what
+     * the first two attempts at this got wrong in opposite directions.
+     *
+     * Listing the modes an app window reports -- standalone, plus
+     * window-controls-overlay -- put the bar inside Brave's installed app,
+     * offering to install what was already installed: that window reports
+     * neither. Inverting it, and showing the bar only in display-mode:
+     * browser, took the bar away from a Chrome window in macOS fullscreen,
+     * measured here: a plain tab in a fullscreen window reports fullscreen and
+     * not browser, and fullscreen is most of how people use a browser on a
+     * Mac. Neither list can be completed, because both are guesses about
+     * window chrome, and window chrome is not the question.
+     *
+     * The question is where this window came from, and the manifest can answer
+     * it: start_url carries ?app=1, so the first page of an app launch says so
+     * in its own URL. That survives a browser having whatever opinion it likes
+     * about display modes. The app navigates on from that page and loses the
+     * parameter, so the answer is kept in sessionStorage, which is per-window
+     * -- exactly the scope of the question -- and never leaks into a tab.
+     *
+     * The display modes stay on as a second opinion, since an app window can
+     * also be reached without going through start_url (a captured link, an
+     * existing window being navigated). Every mode except fullscreen, which is
+     * the one a tab can be in.
      */
-    function isInstalledWindow () {
-        return window.matchMedia('(display-mode: standalone)').matches ||
-            window.matchMedia('(display-mode: window-controls-overlay)').matches ||
-            window.navigator.standalone === true;
+    var APP_KEY = 'scratchjr-app-window';
+    var APP_MODES = ['standalone', 'window-controls-overlay', 'minimal-ui', 'tabbed'];
+
+    function markedAsApp () {
+        var launched = /[?&]app=1\b/.test(window.location.search);
+        try {
+            if (launched) {
+                window.sessionStorage.setItem(APP_KEY, '1');
+            }
+            return window.sessionStorage.getItem(APP_KEY) === '1';
+        } catch (e) {
+            // No storage to remember it in; the launch page still answers.
+            return launched;
+        }
     }
 
-    // Before anything is built or any listener attached. Inside the installed
-    // app this file does nothing at all.
-    if (isInstalledWindow()) {
-        return;
+    function isAppWindow () {
+        if (window.navigator.standalone === true || markedAsApp()) {
+            return true;
+        }
+        for (var i = 0; i < APP_MODES.length; i++) {
+            if (window.matchMedia('(display-mode: ' + APP_MODES[i] + ')').matches) {
+                return true;
+            }
+        }
+        return false;
     }
 
     try {
@@ -60,13 +95,17 @@
     }
 
     /*
-     * The media query is a killswitch, not decoration: if this script ever runs
-     * in an installed window despite the check above -- a browser that reports
-     * standalone late, a display mode that changes under us -- the bar cannot
-     * render, whatever the JavaScript believes.
+     * A killswitch for the modes a media query can name, covering the case
+     * where a window changes into an app window under a script that has
+     * already decided. It is deliberately not the whole test -- the launch
+     * marker is the part that catches Brave, and CSS cannot see it -- so the
+     * bar is also never built in a window isAppWindow() has ruled out.
+     * fullscreen is left out here for the same reason as there: a tab can be
+     * in it.
      */
     var CSS = [
-        '@media all and (display-mode: standalone), (display-mode: window-controls-overlay) {',
+        '@media all and (display-mode: standalone), (display-mode: window-controls-overlay),',
+        '  (display-mode: minimal-ui), (display-mode: tabbed) {',
         '  #pwa-install-bar { display: none !important; }',
         '}',
         '@keyframes pwaSlideUp {',
@@ -139,6 +178,7 @@
     ].join('\n');
 
     var bar = null;
+    var dismissed = false;
 
     function hide () {
         if (bar) {
@@ -186,6 +226,7 @@
         });
 
         later.addEventListener('click', function () {
+            dismissed = true;
             try {
                 window.sessionStorage.setItem(DISMISSED_KEY, '1');
             } catch (e) {
@@ -203,15 +244,50 @@
 
     window.addEventListener('appinstalled', function () {
         deferredPrompt = null;
+        dismissed = true;
         hide();
     });
+
+    /**
+     * Put the bar up or take it down for the window as it is now, building it
+     * the first time it is wanted and never in a window that does not want it.
+     * The installed app therefore holds no bar, no styles and no listeners
+     * beyond the one below, which never fires there.
+     */
+    function sync () {
+        if (isAppWindow() || dismissed) {
+            hide();
+            return;
+        }
+        if (!bar) {
+            build();
+            return;
+        }
+        bar.style.display = 'block';
+    }
+
+    /*
+     * A window can change what it reports -- Chromium settles display-mode
+     * late in some launches, and a page can be moved into an app window -- so
+     * the answer is asked again whenever the browser changes its mind rather
+     * than once, at load, forever.
+     */
+    function watch () {
+        var query = window.matchMedia('(display-mode: standalone)');
+        if (query.addEventListener) {
+            query.addEventListener('change', sync);
+        } else if (query.addListener) {
+            query.addListener(sync);
+        }
+    }
 
     // The script tag sits at the end of <body>, but ScratchJr's start-up runs
     // on window.onload and rearranges the page it finds; appending after that
     // keeps the bar out of anything the splash does to its own frame.
     if (document.readyState === 'complete') {
-        build();
+        sync();
     } else {
-        window.addEventListener('load', build);
+        window.addEventListener('load', sync);
     }
+    watch();
 }());

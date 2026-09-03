@@ -44,6 +44,14 @@ of the session. It does not try to work out what the browser is up to: silence
 from `beforeinstallprompt` proves nothing, since a browser is equally silent
 when the app is already installed and when it is muting its own install offer.
 
+Telling an app window from a tab is done by the launch, not by the window. The
+manifest's `start_url` is `/?app=1`, and the bar remembers that marker in
+`sessionStorage`, which is per-window. Display modes are a second opinion only:
+Brave's installed window reports neither `standalone` nor
+`window-controls-overlay`, and a plain tab in a fullscreen macOS Chrome window
+reports `fullscreen` rather than `browser`, so no list of modes gets both ends
+of this right on its own.
+
 Three files in the original ScratchJr source were touched, all in the platform layer:
 `iPad/iOS.js` (resources resolve asynchronously so they can come from the offline
 cache), `utils/lib.js` (stylesheet expressions no longer go through `eval`, which a

@@ -5,8 +5,8 @@
   "outputDirectory": "dist",
   "installCommand": "npm install",
   "redirects": [
-    {"source": "/app", "destination": "/", "permanent": false},
-    {"source": "/app/(.*)", "destination": "/$1", "permanent": false}
+    {"source": "/app", "destination": "/?app=1", "permanent": false},
+    {"source": "/app/(.*)", "destination": "/$1?app=1", "permanent": false}
   ],
   "headers": [
     {

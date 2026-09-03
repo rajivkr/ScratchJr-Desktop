@@ -21,7 +21,9 @@
  * It used to sit under /app/ instead, behind a landing page. A copy installed
  * back then still has /app/index.html as its start_url and keeps it until the
  * browser re-reads the manifest, so vercel.json redirects the old paths to the
- * new ones. vercel.json takes no comments; that is what this paragraph is for.
+ * new ones -- carrying ?app=1, so those launches identify themselves as
+ * launches in the meantime. vercel.json takes no comments; this paragraph is
+ * where that reasoning lives.
  *
  * The app's HTML is copied with only its two <script> tags rewritten: the
  * Electron client and the raw ES-module entry point are replaced by one
@@ -302,8 +304,13 @@ function writeWebManifest () {
         description: 'ScratchJr - an introductory programming language for young children.',
         // One page for both readings of "the app": the site's front door and
         // the installed window's start_url are the same splash.
+        //
+        // ?app=1 is how a launch says it is a launch. The install bar reads it
+        // to tell an app window from a tab, which no display-mode query does
+        // reliably -- see web/install-banner.js. `id` is pinned above, so
+        // changing start_url does not hand existing installs a new identity.
         scope: '/',
-        start_url: '/',
+        start_url: '/?app=1',
         display: 'standalone',
         orientation: 'landscape',
         // A click that lands in scope should wake the installed window rather
