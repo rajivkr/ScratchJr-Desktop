@@ -1,24 +1,32 @@
 /*
  * Build the ScratchJr PWA.
  *
- *   dist/index.html      The landing page: what this is, the MIT trademark
- *                        notice, and the install banner across the bottom.
- *   dist/app/            ScratchJr itself.
- *   dist/                The manifest, service worker and icons, at the root
- *                        so their scope covers both.
+ *   dist/index.html      ScratchJr's own splash. It is the first page in both
+ *                        directions: the front door of the site and the
+ *                        start_url of the installed app.
+ *   dist/                The rest of the app beside it, together with the
+ *                        manifest, service worker and icons, so one scope at
+ *                        the root covers the lot.
  *
- * The two live at different paths because they are for different readers. A
- * browser gets the landing page and an offer to install; the installed app
- * starts at /app/index.html and never sees the landing page. Each bounces to
- * the other if it ends up in the wrong window, so neither can strand anyone.
+ * There is no landing page. The app runs wherever it is opened -- a browser
+ * tab is a perfectly good place to use it -- and the only thing a tab gets
+ * that an installed window does not is the install bar across the bottom of
+ * the splash. install-banner.js puts it there and takes itself out of the way
+ * inside an installed window.
  *
- * The app keeps its own directory because its pages navigate to each other by
- * relative name -- home.js and Lobby.js both go to 'index.html' -- so the
- * splash has to keep that filename, and the landing page wants the root.
+ * The app keeps ScratchJr's own filenames because its pages navigate to each
+ * other by relative name -- home.js and Lobby.js both go to 'index.html' --
+ * which is exactly why the splash can sit at the root unaltered.
+ *
+ * It used to sit under /app/ instead, behind a landing page. A copy installed
+ * back then still has /app/index.html as its start_url and keeps it until the
+ * browser re-reads the manifest, so vercel.json redirects the old paths to the
+ * new ones. vercel.json takes no comments; that is what this paragraph is for.
  *
  * The app's HTML is copied with only its two <script> tags rewritten: the
- * Electron client and the raw ES-module entry point are replaced by one bundle.
- * No other markup, stylesheet, or image is touched.
+ * Electron client and the raw ES-module entry point are replaced by one
+ * bundle. The splash gets the install bar's script as well. No other markup,
+ * stylesheet, or image is touched.
  */
 
 import * as esbuild from 'esbuild';
@@ -30,12 +38,7 @@ import {fileURLToPath} from 'node:url';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const dist = path.join(root, 'dist');
-const appDist = path.join(dist, 'app');
 const appSrc = path.join(root, 'src', 'app');
-
-// Absolute origin the site is served from. Needed for related_applications,
-// which the spec requires to be an absolute URL.
-const SITE_URL = (process.env.SITE_URL || 'https://scratchjr.rajiv.kr').replace(/\/$/, '');
 
 const watch = process.argv.includes('--watch');
 const serve = process.argv.includes('--serve');
@@ -89,7 +92,7 @@ const snapAlias = {
 
 const appBundle = {
     entryPoints: [path.join(root, 'web', 'entry.js')],
-    outfile: path.join(appDist, 'scratchjr.js'),
+    outfile: path.join(dist, 'scratchjr.js'),
     bundle: true,
     format: 'iife',
     target: ['es2020'],
@@ -104,16 +107,16 @@ const appBundle = {
 
 function copyAppAssets () {
     for (const dir of ASSET_DIRS) {
-        copyDir(path.join(appSrc, dir), path.join(appDist, dir));
+        copyDir(path.join(appSrc, dir), path.join(dist, dir));
     }
     for (const file of ASSET_FILES) {
-        fs.copyFileSync(path.join(appSrc, file), path.join(appDist, file));
+        fs.copyFileSync(path.join(appSrc, file), path.join(dist, file));
     }
 
     // Loaded as a classic script; see web/snap-shim.js for why.
     fs.copyFileSync(
         path.join(appSrc, 'src', 'snap', 'snap.svg-min.js'),
-        path.join(appDist, 'snap.svg-min.js')
+        path.join(dist, 'snap.svg-min.js')
     );
 
     // sql.js needs its WebAssembly module beside the app pages. esbuild resolves
@@ -122,26 +125,20 @@ function copyAppAssets () {
     // against the bundle rather than assumed, since shipping the wrong one is a
     // silent failure at start-up and shipping both wastes 650KB of the shell.
     const wasm = 'sql-wasm-browser.wasm';
-    const bundle = fs.readFileSync(path.join(appDist, 'scratchjr.js'), 'utf8');
+    const bundle = fs.readFileSync(path.join(dist, 'scratchjr.js'), 'utf8');
     if (!bundle.includes(wasm)) {
         throw new Error(`The bundle does not reference ${wasm}; check sql.js resolution`);
     }
     fs.copyFileSync(
         path.join(root, 'node_modules', 'sql.js', 'dist', wasm),
-        path.join(appDist, wasm)
+        path.join(dist, wasm)
     );
 }
 
-function copyLandingAssets () {
-    // The front door. A browser that asks for anything else ends up here.
-    fs.copyFileSync(path.join(root, 'web', 'landing', 'index.html'), path.join(dist, 'index.html'));
+function copyInstallBanner () {
+    // A classic script, loaded by the splash alone. Kept out of the bundle so
+    // it runs and decides before ScratchJr's own start-up gets going.
     fs.copyFileSync(path.join(root, 'web', 'install-banner.js'), path.join(dist, 'install-banner.js'));
-    for (const file of ['pricing.css', 'scratchformac.png', 'scratchforwin.png']) {
-        const from = path.join(root, 'docs', file);
-        if (fs.existsSync(from)) {
-            fs.copyFileSync(from, path.join(dist, file));
-        }
-    }
 }
 
 // ---- 3. Rewrite the app's HTML ------------------------------------------
@@ -172,7 +169,20 @@ function rewritePages () {
             throw new Error('Bundle tag missing from ' + page);
         }
 
-        fs.writeFileSync(path.join(appDist, page), html);
+        // Only the splash offers the install. Nobody wants a bar across the
+        // bottom of the editor, and the offer belongs at the first page
+        // anyway, before a child is in the middle of something.
+        if (page === 'index.html') {
+            html = html.replace(
+                '</body>',
+                '<script src="/install-banner.js"></script>\n</body>'
+            );
+            if (!html.includes('install-banner.js')) {
+                throw new Error('Install bar tag missing from ' + page);
+            }
+        }
+
+        fs.writeFileSync(path.join(dist, page), html);
     }
 }
 
@@ -202,7 +212,7 @@ function writeSoundManifest () {
         }
     }
 
-    fs.writeFileSync(path.join(appDist, 'sound-manifest.json'), JSON.stringify(manifest, null, 2));
+    fs.writeFileSync(path.join(dist, 'sound-manifest.json'), JSON.stringify(manifest, null, 2));
     return Object.keys(manifest).length;
 }
 
@@ -290,28 +300,19 @@ function writeWebManifest () {
         name: 'ScratchJr',
         short_name: 'ScratchJr',
         description: 'ScratchJr - an introductory programming language for young children.',
-        // Scope covers the landing page so the browser can offer to install
-        // from there; launching goes straight into the app.
+        // One page for both readings of "the app": the site's front door and
+        // the installed window's start_url are the same splash.
         scope: '/',
-        start_url: '/app/index.html',
+        start_url: '/',
         display: 'standalone',
         orientation: 'landscape',
-        // Lets a link click on the landing page hand off to the installed
-        // window instead of rendering the app in the tab. Chromium focuses an
-        // existing app window for an in-scope, user-initiated navigation; where
-        // link capturing is off it simply navigates, which the app's own guard
-        // turns back into a trip to the landing page.
+        // A click that lands in scope should wake the installed window rather
+        // than open a second copy of ScratchJr in a tab. Where link capturing
+        // is off this simply navigates, which is no worse than before: the app
+        // works in the tab too.
         launch_handler: {
             client_mode: ['focus-existing', 'auto']
         },
-        // Lets a page ask navigator.getInstalledRelatedApps() whether this app
-        // is already installed, so the landing page can offer to open it rather
-        // than to install it again. Without this entry the call always returns
-        // an empty list, whatever the real state.
-        related_applications: [
-            {platform: 'webapp', url: `${SITE_URL}/manifest.webmanifest`}
-        ],
-        prefer_related_applications: false,
         background_color: '#000000',
         theme_color: '#000000',
         icons: ICON_SIZES.map((size) => ({
@@ -339,21 +340,16 @@ function writeWebManifest () {
  * install must not wait on 34MB of artwork.
  */
 function isShell (file) {
-    // Tested without the app's directory prefix, so moving the app under
-    // /app/ does not quietly drop its locales and manifests out of the shell
-    // and leave a freshly installed copy fetching them on first run.
-    const within = file.startsWith('app/') ? file.slice(4) : file;
-
-    return within.endsWith('.html') ||
-        within.endsWith('.js') ||
-        within.endsWith('.wasm') ||
-        within.endsWith('.webmanifest') ||
-        within.endsWith('.css') ||
-        within.startsWith('icons/') ||
-        within.startsWith('localizations/') ||
-        within === 'media.json' ||
-        within === 'settings.json' ||
-        within === 'sound-manifest.json';
+    return file.endsWith('.html') ||
+        file.endsWith('.js') ||
+        file.endsWith('.wasm') ||
+        file.endsWith('.webmanifest') ||
+        file.endsWith('.css') ||
+        file.startsWith('icons/') ||
+        file.startsWith('localizations/') ||
+        file === 'media.json' ||
+        file === 'settings.json' ||
+        file === 'sound-manifest.json';
 }
 
 function writeServiceWorker () {
@@ -368,7 +364,7 @@ function writeServiceWorker () {
 
     const fingerprint = createHash('sha256')
         .update(files.join('\n'))
-        .update(fs.readFileSync(path.join(appDist, 'scratchjr.js')))
+        .update(fs.readFileSync(path.join(dist, 'scratchjr.js')))
         .digest('hex')
         .slice(0, 12);
 
@@ -396,14 +392,14 @@ function writeServiceWorker () {
 async function build () {
     const started = Date.now();
     rimraf(dist);
-    fs.mkdirSync(appDist, {recursive: true});
+    fs.mkdirSync(dist, {recursive: true});
 
     const styles = writeStyleBundle();
 
     await esbuild.build(appBundle);
 
     copyAppAssets();
-    copyLandingAssets();
+    copyInstallBanner();
     rewritePages();
 
     const sounds = writeSoundManifest();
