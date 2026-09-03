@@ -40,17 +40,19 @@ of that same contract, backed only by browser APIs.
   is loaded by the splash alone, and does nothing at all inside an installed window.
 
 The bar makes one offer, Install, and takes `Not now` for an answer for the rest
-of the session. It does not try to work out what the browser is up to: silence
-from `beforeinstallprompt` proves nothing, since a browser is equally silent
-when the app is already installed and when it is muting its own install offer.
+of the session. It goes up only when `beforeinstallprompt` fires, which is the
+browser saying both that there is an install to give and that the app is not
+already installed -- Chromium does not fire it inside an installed copy. The
+iPad is the exception: Safari has no such event, so it gets the Share sheet
+steps, guarded by `navigator.standalone`.
 
-Telling an app window from a tab is done by the launch, not by the window. The
-manifest's `start_url` is `/?app=1`, and the bar remembers that marker in
-`sessionStorage`, which is per-window. Display modes are a second opinion only:
-Brave's installed window reports neither `standalone` nor
-`window-controls-overlay`, and a plain tab in a fullscreen macOS Chrome window
-reports `fullscreen` rather than `browser`, so no list of modes gets both ends
-of this right on its own.
+Behind that, telling an app window from a tab is done by the launch, not by the
+window: the manifest's `start_url` is `/?app=1`, and the bar remembers that
+marker in `sessionStorage`, which is per-window. Display modes are the last
+opinion, not the first. Brave's installed window reports neither `standalone`
+nor `window-controls-overlay`, and a plain tab in a fullscreen macOS Chrome
+window reports `fullscreen` rather than `browser`, so no list of modes gets
+both ends of this right on its own.
 
 Three files in the original ScratchJr source were touched, all in the platform layer:
 `iPad/iOS.js` (resources resolve asynchronously so they can come from the offline

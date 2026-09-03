@@ -7,10 +7,11 @@
  * page to carry them. Loaded by dist/index.html alone -- nobody wants a bar
  * over the editor, and a child mid-project is the wrong moment to ask.
  *
- * One offer, every time: Install. No open-instead, no already-installed, no
- * detection of what the browser might be up to. The bar is up for anyone who
- * is not already inside the installed app, the button prompts when the browser
- * gives us a prompt, and that is the whole of it.
+ * One offer, Install, and only when the browser has an install to give: the
+ * bar goes up on beforeinstallprompt and nowhere else, bar the iPad, which has
+ * no such event and gets the Share sheet steps instead. No open-instead, no
+ * already-installed, no guessing at what the browser is up to -- the browser
+ * says so by firing, or by staying silent because the app is already there.
  *
  * Deliberately short. It sits over ScratchJr's splash, which fills the window
  * and has a start button in the middle of it, so the bar is a single row along
@@ -186,9 +187,6 @@
         }
     }
 
-    // Safari fires no beforeinstallprompt and never will, so the iPad -- the
-    // device ScratchJr was written for -- gets the Share sheet steps in place
-    // of the button. Everywhere else gets the button.
     function build () {
         var iosSteps = isIOS();
 
@@ -236,10 +234,27 @@
         });
     }
 
+    /*
+     * The real gate, and the one this bar was missing.
+     *
+     * Chromium fires beforeinstallprompt when it is willing to install this
+     * app, and does not fire it when the app is already installed. So the
+     * event is not just the thing that makes the button work -- it is proof
+     * that there is an install to offer and that this window is somewhere it
+     * can be offered. Norven's banner, which this was modelled on, has always
+     * worked this way, and that is why it never turned up inside its own app.
+     *
+     * ScratchJr's bar used to go up regardless, from a time when it lived on a
+     * landing page and an empty page with no offer on it looked broken. Over
+     * the app the calculus is the other way round: a browser with no install
+     * to give should show nothing, because ScratchJr is already there behind
+     * the bar and working.
+     */
     window.addEventListener('beforeinstallprompt', function (event) {
         // Suppress the browser's own mini-infobar; the bar asks properly.
         event.preventDefault();
         deferredPrompt = event;
+        sync();
     });
 
     window.addEventListener('appinstalled', function () {
@@ -248,14 +263,30 @@
         hide();
     });
 
+    var loaded = false;
+
     /**
      * Put the bar up or take it down for the window as it is now, building it
-     * the first time it is wanted and never in a window that does not want it.
-     * The installed app therefore holds no bar, no styles and no listeners
-     * beyond the one below, which never fires there.
+     * the first time it is genuinely wanted and never in a window that does
+     * not want it. An installed app holds no bar, no styles and no listeners
+     * beyond the two window-level ones, which never fire there.
+     *
+     * Called on load, when a prompt arrives, and when the display mode
+     * changes, because any of the three can be the last to arrive.
      */
     function sync () {
-        if (isAppWindow() || dismissed) {
+        // The bar is built at the end of <body>, but ScratchJr's start-up runs
+        // on window.onload and rearranges the page it finds; waiting keeps the
+        // bar out of whatever the splash does to its own frame.
+        if (!loaded) {
+            return;
+        }
+        // isIOS: Safari fires no beforeinstallprompt and never will, so the
+        // iPad -- the device ScratchJr was written for -- is the one place a
+        // bar goes up without one, with the Share sheet steps in place of the
+        // button. navigator.standalone, checked in isAppWindow(), is reliable
+        // there in a way the display modes are not.
+        if (isAppWindow() || dismissed || (!deferredPrompt && !isIOS())) {
             hide();
             return;
         }
@@ -284,10 +315,15 @@
     // The script tag sits at the end of <body>, but ScratchJr's start-up runs
     // on window.onload and rearranges the page it finds; appending after that
     // keeps the bar out of anything the splash does to its own frame.
-    if (document.readyState === 'complete') {
+    function ready () {
+        loaded = true;
         sync();
+    }
+
+    if (document.readyState === 'complete') {
+        ready();
     } else {
-        window.addEventListener('load', sync);
+        window.addEventListener('load', ready);
     }
     watch();
 }());
